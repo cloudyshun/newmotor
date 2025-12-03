@@ -109,10 +109,12 @@ volatile uint32_t h_count = 0;        // H相(B相)原始计数
 uint8_t last_g = 0;                   // 上次G相状态
 uint8_t last_h = 0;                   // 上次H相状态
 volatile uint32_t interrupt_count = 0; // 中断触发计数（调试用）
+volatile bool pa4_changed = false;     // PA4变化标志位
 
-// 165中断服务函数 - 只递增计数器
+// 165中断服务函数 - PA4变化时触发
 void ISR_165() {
-  interrupt_count++;  // 记录中断次数
+  interrupt_count++;     // 记录中断次数
+  pa4_changed = true;    // 设置变化标志
 }
 
 // ====== 165 信号变化检测（H/G/F = 限位开关）======
@@ -197,8 +199,9 @@ void setup() {
   last_g = (initial_hgf >> 1) & 0x01;
   last_h = (initial_hgf >> 2) & 0x01;
 
-  // 不使用中断，改用高频轮询
-  // attachInterrupt(digitalPinToInterrupt(PIN_165_QH), ISR_165, CHANGE);
+  // 启用PA4中断 - 检测QH引脚的任何变化
+  attachInterrupt(digitalPinToInterrupt(PIN_165_QH), ISR_165, CHANGE);
+  Serial.println("PA4 interrupt enabled (CHANGE mode)");
 
   last_ms = millis();
 }
@@ -352,17 +355,22 @@ void loop() {
   // 处理串口屏指令（最高优先级，无阻塞）
   handleScreenCommands();
 
-  // ==== 高频轮询读取165（霍尔编码+限位检测）====
-  uint8_t hgf = read165_HGF();
+  // ==== 中断触发式读取165（仅在PA4变化时读取）====
+  uint8_t hgf = 0;
+  uint8_t current_h = 0;
+  uint8_t current_g = 0;
+  uint8_t current_f = 0;
+  
+  // 只在PA4中断触发时才读取165数据
+  if (pa4_changed) {
+    pa4_changed = false;  // 清除标志
+    hgf = read165_HGF();
+    current_h = (hgf >> 2) & 0x01;  // 提取H位 (bit2)
+    current_g = (hgf >> 1) & 0x01;  // 提取G位 (bit1)
+    current_f = (hgf >> 0) & 0x01;  // 提取F位 (bit0)
 
-  uint8_t current_h = (hgf >> 2) & 0x01;  // 提取H位 (bit2)
-  uint8_t current_g = (hgf >> 1) & 0x01;  // 提取G位 (bit1)
-  uint8_t current_f = (hgf >> 0) & 0x01;  // 提取F位 (bit0)
-
-  // 调试输出（每秒一次）
-  debug_loop_count++;
-  if (millis() - last_debug_time >= 1000) {
-    Serial.print("HGF=0b");
+    // 调试输出PA4中断触发
+    Serial.print("[PA4 INT] HGF=0b");
     if (hgf < 2) Serial.print("00");
     else if (hgf < 4) Serial.print("0");
     Serial.print(hgf, BIN);
@@ -374,60 +382,65 @@ void loop() {
     Serial.print(current_g);
     Serial.print(" F=");
     Serial.print(current_f);
-    Serial.print(" | last_h=");
-    Serial.print(last_h);
-    Serial.print(" last_g=");
-    Serial.print(last_g);
-    Serial.print(" | h_count=");
+    Serial.print(" | int_cnt=");
+    Serial.println(interrupt_count);
+
+    // 检测G相变化 (A相)
+    if (current_g != last_g) {
+      g_count++;
+      // A相变化时，读取B相电平判断方向
+      if (current_g == current_h) {
+        position++;  // 正转
+      } else {
+        position--;  // 反转
+      }
+      last_g = current_g;
+      
+      // 实时调试输出G相变化
+      if (g_count % 10 == 0) {  // 每10次变化输出一次
+        Serial.print("  [G] count=");
+        Serial.println(g_count);
+      }
+    }
+
+    // 检测H相变化 (B相)
+    if (current_h != last_h) {
+      h_count++;
+      last_h = current_h;
+      
+      // 实时调试输出H相变化
+      if (h_count % 10 == 0) {  // 每10次变化输出一次
+        Serial.print("  [H] count=");
+        Serial.println(h_count);
+      }
+    }
+
+    // 限位检测
+    if (hgf != last_hgf && last_hgf != 0xFF) {
+      hgf_change_count++;
+      hgf_history[history_index] = millis();
+      hgf_values[history_index] = hgf;
+      history_index = (history_index + 1) % 10;
+    }
+    last_hgf = hgf;
+  }
+  
+  // 定期输出统计信息（每秒一次）
+  debug_loop_count++;
+  if (millis() - last_debug_time >= 1000) {
+    Serial.print("[Status] h_cnt=");
     Serial.print(h_count);
-    Serial.print(" g_count=");
+    Serial.print(" g_cnt=");
     Serial.print(g_count);
     Serial.print(" pos=");
     Serial.print(position);
+    Serial.print(" int_cnt=");
+    Serial.print(interrupt_count);
     Serial.print(" | loops/s=");
     Serial.println(debug_loop_count);
     debug_loop_count = 0;
     last_debug_time = millis();
   }
-
-  // 检测G相变化 (A相)
-  if (current_g != last_g) {
-    g_count++;
-    // A相变化时，读取B相电平判断方向
-    if (current_g == current_h) {
-      position++;  // 正转
-    } else {
-      position--;  // 反转
-    }
-    last_g = current_g;
-    
-    // 实时调试输出G相变化
-    if (g_count % 100 == 0) {  // 每100次变化输出一次
-      Serial.print("[G] count=");
-      Serial.println(g_count);
-    }
-  }
-
-  // 检测H相变化 (B相)
-  if (current_h != last_h) {
-    h_count++;
-    last_h = current_h;
-    
-    // 实时调试输出H相变化
-    if (h_count % 100 == 0) {  // 每100次变化输出一次
-      Serial.print("[H] count=");
-      Serial.println(h_count);
-    }
-  }
-
-  // 限位检测
-  if (hgf != last_hgf && last_hgf != 0xFF) {
-    hgf_change_count++;
-    hgf_history[history_index] = millis();
-    hgf_values[history_index] = hgf;
-    history_index = (history_index + 1) % 10;
-  }
-  last_hgf = hgf;
 
   // 计算霍尔脉冲频率
   uint32_t now_ms = millis();
