@@ -53,10 +53,13 @@ uint8_t read165_HGF() {
   digitalWrite(PIN_165_SHLD, LOW);            // 并行装载
   delayMicroseconds(1);
   digitalWrite(PIN_165_SHLD, HIGH);           // 进入移位
+  delayMicroseconds(1);                       // 等待数据稳定
   uint8_t H = digitalRead(PIN_165_QH);        // 此时为 H
   digitalWrite(PIN_165_CLK, HIGH); digitalWrite(PIN_165_CLK, LOW);
+  delayMicroseconds(1);                       // 等待移位完成，数据稳定
   uint8_t G = digitalRead(PIN_165_QH);        // 移到 G
   digitalWrite(PIN_165_CLK, HIGH); digitalWrite(PIN_165_CLK, LOW);
+  delayMicroseconds(1);                       // 等待移位完成，数据稳定
   uint8_t F = digitalRead(PIN_165_QH);        // 移到 F
   return (uint8_t)((H<<2)|(G<<1)|(F<<0));     // bit2=H, bit1=G, bit0=F
 }
