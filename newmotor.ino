@@ -157,7 +157,7 @@ void setup() {
   // analogWrite(PIN_PWM, 0);
 
   motorReverse();
-  // analogWrite(PIN_PWM, pctToDuty(SPEED_PERCENT));  // 测试：注释PWM输出
+  analogWrite(PIN_PWM, pctToDuty(SPEED_PERCENT));  // 测试：注释PWM输出
 
   // motorForward();
   // analogWrite(PIN_PWM, pctToDuty(SPEED_PERCENT));
