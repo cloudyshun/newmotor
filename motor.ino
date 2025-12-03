@@ -21,7 +21,6 @@
 
 // ---- 串口屏通讯(RS485) ----
 #define SERIAL_SCREEN Serial1  // PA9(TX), PA10(RX)
-#define PIN_DE_RE      PB9     // RS485 DE/RE控制引脚 (PA12被USB占用，改用PB9)
 
 // 8字节十六进制电机控制命令定义
 const byte motorForwardCmd[8] = {0xEE, 0x02, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00};
@@ -117,8 +116,6 @@ void setup() {
   Serial.println("Motor Control System Starting...");
 
   // 串口屏通讯初始化 (RS485)
-  pinMode(PIN_DE_RE, OUTPUT);
-  digitalWrite(PIN_DE_RE, LOW);  // 默认接收模式
   SERIAL_SCREEN.begin(9600);     // Serial1默认使用PA9(TX)/PA10(RX)
 
   // 清空串口缓冲区，防止残留数据干扰
@@ -221,14 +218,8 @@ void drawOLED() {
 
 // RS485发送16进制数据函数（参照 store22.txt）
 void sendHex485(byte data[8]) {
-  digitalWrite(PIN_DE_RE, HIGH);   // 切换为发送模式
-  delayMicroseconds(20);           // 等待20微秒
-
   SERIAL_SCREEN.write(data, 8);    // 发送8字节数据
   SERIAL_SCREEN.flush();           // 等待发送完成
-
-  delayMicroseconds(20);           // 等待20微秒
-  digitalWrite(PIN_DE_RE, LOW);    // 回到接收模式
 
   Serial.print("Sent: ");
   for (int i = 0; i < 8; i++) {
