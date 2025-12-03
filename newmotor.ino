@@ -62,19 +62,44 @@ const uint8_t SPEED_PERCENT = 90;
 inline uint8_t pctToDuty(uint8_t p){ return (uint8_t)((p * 255UL) / 100UL); }
 
 // ===== 读取 74HC165 的 H、G、F 三位 =====
+// 注意: 74HC165从QH开始输出，每个时钟脉冲后输出下一位
 uint8_t read165_HGF() {
-  digitalWrite(PIN_165_SHLD, LOW);            // 并行装载
-  delayMicroseconds(1);
-  digitalWrite(PIN_165_SHLD, HIGH);           // 进入移位
-  delayMicroseconds(1);                       // 等待数据稳定
-  uint8_t H = digitalRead(PIN_165_QH);        // 此时为 H
-  digitalWrite(PIN_165_CLK, HIGH); digitalWrite(PIN_165_CLK, LOW);
-  delayMicroseconds(1);                       // 等待移位完成，数据稳定
-  uint8_t G = digitalRead(PIN_165_QH);        // 移到 G
-  digitalWrite(PIN_165_CLK, HIGH); digitalWrite(PIN_165_CLK, LOW);
-  delayMicroseconds(1);                       // 等待移位完成，数据稳定
-  uint8_t F = digitalRead(PIN_165_QH);        // 移到 F
-  return (uint8_t)((H<<2)|(G<<1)|(F<<0));     // bit2=H, bit1=G, bit0=F
+  // 并行装载 - SHLD拉低时装载并行数据
+  digitalWrite(PIN_165_SHLD, LOW);
+  delayMicroseconds(10);  // 增加装载时间
+  
+  // 进入移位模式
+  digitalWrite(PIN_165_SHLD, HIGH);
+  delayMicroseconds(10);  // 等待数据从并行输入传播到QH
+  
+  // 读取第一个位 - 根据电路连接，这可能是H、G或F中的一个
+  uint8_t bit0 = digitalRead(PIN_165_QH);
+  
+  // 第一次时钟脉冲
+  digitalWrite(PIN_165_CLK, LOW);   // 确保起始状态
+  delayMicroseconds(2);
+  digitalWrite(PIN_165_CLK, HIGH);  // 上升沿触发移位
+  delayMicroseconds(2);
+  digitalWrite(PIN_165_CLK, LOW);   // 下降沿
+  delayMicroseconds(10);            // 等待数据稳定
+  
+  // 读取第二个位
+  uint8_t bit1 = digitalRead(PIN_165_QH);
+  
+  // 第二次时钟脉冲
+  digitalWrite(PIN_165_CLK, LOW);
+  delayMicroseconds(2);
+  digitalWrite(PIN_165_CLK, HIGH);
+  delayMicroseconds(2);
+  digitalWrite(PIN_165_CLK, LOW);
+  delayMicroseconds(10);
+  
+  // 读取第三个位
+  uint8_t bit2 = digitalRead(PIN_165_QH);
+  
+  // 假设接线顺序: bit0=H(最高位), bit1=G, bit2=F
+  // 组合成一个字节: bit2=H, bit1=G, bit0=F
+  return (uint8_t)((bit0<<2)|(bit1<<1)|(bit2<<0));
 }
 
 // ====== 霍尔/脉冲统计（165的G/H口）- 正交解码 ======
@@ -330,27 +355,36 @@ void loop() {
   // ==== 高频轮询读取165（霍尔编码+限位检测）====
   uint8_t hgf = read165_HGF();
 
-  uint8_t current_g = (hgf >> 1) & 0x01;  // 提取G位 (bit1)
   uint8_t current_h = (hgf >> 2) & 0x01;  // 提取H位 (bit2)
+  uint8_t current_g = (hgf >> 1) & 0x01;  // 提取G位 (bit1)
+  uint8_t current_f = (hgf >> 0) & 0x01;  // 提取F位 (bit0)
 
   // 调试输出（每秒一次）
   debug_loop_count++;
   if (millis() - last_debug_time >= 1000) {
     Serial.print("HGF=0b");
+    if (hgf < 2) Serial.print("00");
+    else if (hgf < 4) Serial.print("0");
     Serial.print(hgf, BIN);
+    Serial.print(" (");
+    Serial.print(hgf);
+    Serial.print(") H=");
+    Serial.print(current_h);
     Serial.print(" G=");
     Serial.print(current_g);
-    Serial.print(" H=");
-    Serial.print(current_h);
+    Serial.print(" F=");
+    Serial.print(current_f);
+    Serial.print(" | last_h=");
+    Serial.print(last_h);
     Serial.print(" last_g=");
     Serial.print(last_g);
-    Serial.print(" last_h=");
-    Serial.print(last_h);
+    Serial.print(" | h_count=");
+    Serial.print(h_count);
     Serial.print(" g_count=");
     Serial.print(g_count);
-    Serial.print(" h_count=");
-    Serial.print(h_count);
-    Serial.print(" loops/s=");
+    Serial.print(" pos=");
+    Serial.print(position);
+    Serial.print(" | loops/s=");
     Serial.println(debug_loop_count);
     debug_loop_count = 0;
     last_debug_time = millis();
@@ -366,12 +400,24 @@ void loop() {
       position--;  // 反转
     }
     last_g = current_g;
+    
+    // 实时调试输出G相变化
+    if (g_count % 100 == 0) {  // 每100次变化输出一次
+      Serial.print("[G] count=");
+      Serial.println(g_count);
+    }
   }
 
   // 检测H相变化 (B相)
   if (current_h != last_h) {
     h_count++;
     last_h = current_h;
+    
+    // 实时调试输出H相变化
+    if (h_count % 100 == 0) {  // 每100次变化输出一次
+      Serial.print("[H] count=");
+      Serial.println(h_count);
+    }
   }
 
   // 限位检测
