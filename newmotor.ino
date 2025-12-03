@@ -15,7 +15,7 @@
 #define PIN_PB11   PB11
 
 // ---- 74HC165 ----
-#define PIN_165_QH     PA4
+#define PIN_165_QH     PA4  // QH作为中断引脚
 #define PIN_165_CLK    PA5
 #define PIN_165_SHLD   PA6
 
@@ -74,24 +74,17 @@ uint8_t read165_HGF() {
   return (uint8_t)((H<<2)|(G<<1)|(F<<0));     // bit2=H, bit1=G, bit0=F
 }
 
-// ====== 霍尔/脉冲统计（PB10 / PB11）- 正交解码 ======
+// ====== 霍尔/脉冲统计（165的G/H口）- 正交解码 ======
 volatile int32_t position = 0;        // 相对位置（可正可负）
-volatile uint32_t pb10_count = 0;     // A相原始计数
-volatile uint32_t pb11_count = 0;     // B相原始计数
+volatile uint32_t g_count = 0;        // G相(A相)原始计数
+volatile uint32_t h_count = 0;        // H相(B相)原始计数
+uint8_t last_g = 0;                   // 上次G相状态
+uint8_t last_h = 0;                   // 上次H相状态
+volatile uint32_t interrupt_count = 0; // 中断触发计数（调试用）
 
-// 正交解码中断函数
-void ISR_pb10() {
-  pb10_count++;
-  // A相变化时，读取B相电平判断方向
-  if (digitalRead(PIN_PB10) == digitalRead(PIN_PB11)) {
-    position++;  // 正转
-  } else {
-    position--;  // 反转
-  }
-}
-
-void ISR_pb11() {
-  pb11_count++;
+// 165中断服务函数 - 只递增计数器
+void ISR_165() {
+  interrupt_count++;  // 记录中断次数
 }
 
 // ====== 165 信号变化检测（H/G/F = 限位开关）======
@@ -103,8 +96,8 @@ uint8_t history_index = 0;
 
 // 频率统计用
 uint32_t last_ms = 0;
-uint32_t last_pb10_cnt = 0, last_pb11_cnt = 0;
-float    freq_pb10 = 0.0f, freq_pb11 = 0.0f;
+uint32_t last_g_cnt = 0, last_h_cnt = 0;
+float    freq_pb10 = 0.0f, freq_pb11 = 0.0f;  // 保留变量名用于显示
 
 // OLED 刷新时间控制（非阻塞）
 unsigned long lastOLEDUpdate = 0;
@@ -140,9 +133,8 @@ void setup() {
   digitalWrite(PIN_165_CLK,  LOW);
   digitalWrite(PIN_165_SHLD, HIGH);
 
-  // 霍尔/脉冲输入（启用上拉，兼容开漏输出）
-  pinMode(PIN_PB10, INPUT_PULLUP);
-  pinMode(PIN_PB11, INPUT_PULLUP);
+  // PA4配置为输入（用于接收165的QH中断信号）
+  pinMode(PIN_165_QH, INPUT);
 
   // 595 初始化
   digitalWrite(PIN_SER,   LOW);
@@ -172,9 +164,13 @@ void setup() {
   display.println("Hall Monitor");
   display.display();
 
-  // 中断计数：检测所有跳变（CHANGE），兼容推挽和开漏
-  attachInterrupt(digitalPinToInterrupt(PIN_PB10), ISR_pb10, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(PIN_PB11), ISR_pb11, CHANGE);
+  // 初始化last_g和last_h状态
+  uint8_t initial_hgf = read165_HGF();
+  last_g = (initial_hgf >> 1) & 0x01;
+  last_h = (initial_hgf >> 2) & 0x01;
+
+  // 不使用中断，改用高频轮询
+  // attachInterrupt(digitalPinToInterrupt(PIN_165_QH), ISR_165, CHANGE);
 
   last_ms = millis();
 }
@@ -189,25 +185,25 @@ void drawOLED() {
   display.print("Position: ");
   display.println(position);
 
-  // 第二行：PB10计数
+  // 第二行：G相计数
   display.setCursor(0, 12);
-  display.print("PB10: ");
-  display.println(pb10_count);
+  display.print("G: ");
+  display.println(g_count);
 
-  // 第三行：PB11计数
+  // 第三行：H相计数
   display.setCursor(0, 24);
-  display.print("PB11: ");
-  display.println(pb11_count);
+  display.print("H: ");
+  display.println(h_count);
 
-  // 第四行：PB10频率
+  // 第四行：G相频率
   display.setCursor(0, 36);
-  display.print("Freq10: ");
+  display.print("FreqG: ");
   display.print(freq_pb10, 1);
   display.println(" Hz");
 
-  // 第五行：PB11频率
+  // 第五行：H相频率
   display.setCursor(0, 48);
-  display.print("Freq11: ");
+  display.print("FreqH: ");
   display.print(freq_pb11, 1);
   display.println(" Hz");
 
@@ -320,17 +316,64 @@ void processHexCommand(byte cmd[8]) {
   }
 }
 
+// 调试变量
+uint32_t debug_loop_count = 0;
+uint32_t last_debug_time = 0;
+
 void loop() {
   // 处理串口屏指令（最高优先级，无阻塞）
   handleScreenCommands();
 
-  // ==== 高频读取 165（检测限位开关变化）====
+  // ==== 高频轮询读取165（霍尔编码+限位检测）====
   uint8_t hgf = read165_HGF();
 
-  // 检测 HGF 变化
+  uint8_t current_g = (hgf >> 1) & 0x01;  // 提取G位 (bit1)
+  uint8_t current_h = (hgf >> 2) & 0x01;  // 提取H位 (bit2)
+
+  // 调试输出（每秒一次）
+  debug_loop_count++;
+  if (millis() - last_debug_time >= 1000) {
+    Serial.print("HGF=0b");
+    Serial.print(hgf, BIN);
+    Serial.print(" G=");
+    Serial.print(current_g);
+    Serial.print(" H=");
+    Serial.print(current_h);
+    Serial.print(" last_g=");
+    Serial.print(last_g);
+    Serial.print(" last_h=");
+    Serial.print(last_h);
+    Serial.print(" g_count=");
+    Serial.print(g_count);
+    Serial.print(" h_count=");
+    Serial.print(h_count);
+    Serial.print(" loops/s=");
+    Serial.println(debug_loop_count);
+    debug_loop_count = 0;
+    last_debug_time = millis();
+  }
+
+  // 检测G相变化 (A相)
+  if (current_g != last_g) {
+    g_count++;
+    // A相变化时，读取B相电平判断方向
+    if (current_g == current_h) {
+      position++;  // 正转
+    } else {
+      position--;  // 反转
+    }
+    last_g = current_g;
+  }
+
+  // 检测H相变化 (B相)
+  if (current_h != last_h) {
+    h_count++;
+    last_h = current_h;
+  }
+
+  // 限位检测
   if (hgf != last_hgf && last_hgf != 0xFF) {
     hgf_change_count++;
-    // 记录到历史
     hgf_history[history_index] = millis();
     hgf_values[history_index] = hgf;
     history_index = (history_index + 1) % 10;
@@ -341,10 +384,10 @@ void loop() {
   uint32_t now_ms = millis();
   if (now_ms - last_ms >= 1000) {  // 每秒更新一次频率
     uint32_t dt = now_ms - last_ms;
-    freq_pb10 = (pb10_count - last_pb10_cnt) * 1000.0f / dt;
-    freq_pb11 = (pb11_count - last_pb11_cnt) * 1000.0f / dt;
-    last_pb10_cnt = pb10_count;
-    last_pb11_cnt = pb11_count;
+    freq_pb10 = (g_count - last_g_cnt) * 1000.0f / dt;
+    freq_pb11 = (h_count - last_h_cnt) * 1000.0f / dt;
+    last_g_cnt = g_count;
+    last_h_cnt = h_count;
     last_ms = now_ms;
   }
 
