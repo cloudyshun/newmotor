@@ -20,8 +20,10 @@
 #define PIN_165_SHLD   PA6
 
 // ---- ADC电流采样 ----
-#define PIN_ADC_CURRENT PA7  // 电流采样引脚
-#define SHUNT_RESISTANCE 0.05  // 采样电阻 R126 = 50mΩ = 0.05Ω
+#define PIN_ADC_CURRENT PA7       // 电流采样引脚
+#define SHUNT_RESISTANCE 0.05     // 采样电阻 R126 = 50mΩ = 0.05Ω
+#define CURRENT_SAMPLE_COUNT 99    // 中值滤波采样次数（建议奇数）
+#define CURRENT_UPDATE_INTERVAL 1000  // 电流更新间隔(ms)如果是500的话，可能会有零点误差（与单片机本身有关系）
 
 // ---- 串口屏通讯(RS485) ----
 #define SERIAL_SCREEN Serial1  // PA9(TX), PA10(RX)
@@ -64,6 +66,40 @@ inline void motorStop()    { shiftOut16(0x00, 0x00);  }
 
 const uint8_t SPEED_PERCENT = 90;
 inline uint8_t pctToDuty(uint8_t p){ return (uint8_t)((p * 255UL) / 100UL); }
+
+// ===== 中值+均值滤波采样电流 =====
+float sampleCurrentFiltered() {
+  float samples[CURRENT_SAMPLE_COUNT];
+
+  // 采集多个样本
+  for (int i = 0; i < CURRENT_SAMPLE_COUNT; i++) {
+    int adc_value = analogRead(PIN_ADC_CURRENT);
+    float voltage = (adc_value / 4095.0) * 3.3;
+    samples[i] = voltage / SHUNT_RESISTANCE;
+    delayMicroseconds(100);  // 样本间隔100us
+  }
+
+  // 冒泡排序
+  for (int i = 0; i < CURRENT_SAMPLE_COUNT - 1; i++) {
+    for (int j = 0; j < CURRENT_SAMPLE_COUNT - i - 1; j++) {
+      if (samples[j] > samples[j + 1]) {
+        float temp = samples[j];
+        samples[j] = samples[j + 1];
+        samples[j + 1] = temp;
+      }
+    }
+  }
+
+  // 去掉最大最小值，计算中间值的平均
+  float sum = 0;
+  int start = 1;  // 去掉最小值
+  int end = CURRENT_SAMPLE_COUNT - 1;  // 去掉最大值
+  for (int i = start; i < end; i++) {
+    sum += samples[i];
+  }
+
+  return sum / (end - start);
+}
 
 // ===== 读取 74HC165 的 H、G、F 三位 =====
 uint8_t read165_HGF() {
@@ -112,6 +148,7 @@ float    freq_pb10 = 0.0f, freq_pb11 = 0.0f;
 
 // 电流采样变量
 float current_amps = 0.0f;  // 当前电流值（A）
+unsigned long lastCurrentUpdate = 0;  // 电流采样计时器
 
 // OLED 刷新时间控制（非阻塞）
 unsigned long lastOLEDUpdate = 0;
@@ -364,11 +401,11 @@ void loop() {
     last_ms = now_ms;
   }
 
-  // ADC采样并计算电流
-  // STM32的ADC是12位，范围0-4095对应0-3.3V
-  int adc_value = analogRead(PIN_ADC_CURRENT);
-  float voltage = (adc_value / 4095.0) * 3.3;  // 计算电压(V)
-  current_amps = voltage / SHUNT_RESISTANCE;    // 电流 = 电压 / 电阻
+  // 定时采样电流（每300ms采样一次，使用中值+均值滤波）
+  if (millis() - lastCurrentUpdate >= CURRENT_UPDATE_INTERVAL) {
+    current_amps = sampleCurrentFiltered();
+    lastCurrentUpdate = millis();
+  }
 
   // OLED 显示更新（每100ms刷新一次）
   unsigned long currentTime = millis();
