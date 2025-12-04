@@ -19,6 +19,10 @@
 #define PIN_165_CLK    PA5
 #define PIN_165_SHLD   PA6
 
+// ---- ADC电流采样 ----
+#define PIN_ADC_CURRENT PA7  // 电流采样引脚
+#define SHUNT_RESISTANCE 0.05  // 采样电阻 R126 = 50mΩ = 0.05Ω
+
 // ---- 串口屏通讯(RS485) ----
 #define SERIAL_SCREEN Serial1  // PA9(TX), PA10(RX)
 
@@ -106,6 +110,9 @@ uint32_t last_ms = 0;
 uint32_t last_pb10_cnt = 0, last_pb11_cnt = 0;
 float    freq_pb10 = 0.0f, freq_pb11 = 0.0f;
 
+// 电流采样变量
+float current_amps = 0.0f;  // 当前电流值（A）
+
 // OLED 刷新时间控制（非阻塞）
 unsigned long lastOLEDUpdate = 0;
 
@@ -139,6 +146,9 @@ void setup() {
   pinMode(PIN_165_SHLD, OUTPUT);
   digitalWrite(PIN_165_CLK,  LOW);
   digitalWrite(PIN_165_SHLD, HIGH);
+
+  // ADC电流采样引脚初始化
+  pinMode(PIN_ADC_CURRENT, INPUT_ANALOG);
 
   // 霍尔/脉冲输入（启用上拉，兼容开漏输出）
   pinMode(PIN_PB10, INPUT_PULLUP);
@@ -182,34 +192,40 @@ void setup() {
 // OLED显示函数 - 显示霍尔脉冲和位置
 void drawOLED() {
   display.clearDisplay();
-  display.setTextSize(1);
+  display.setTextSize(1);  // 使用小字体以显示6行内容
 
   // 第一行：相对位置
   display.setCursor(0, 0);
-  display.print("Position: ");
+  display.print("Pos: ");
   display.println(position);
 
   // 第二行：PB10计数
-  display.setCursor(0, 12);
+  display.setCursor(0, 10);
   display.print("PB10: ");
   display.println(pb10_count);
 
   // 第三行：PB11计数
-  display.setCursor(0, 24);
+  display.setCursor(0, 20);
   display.print("PB11: ");
   display.println(pb11_count);
 
   // 第四行：PB10频率
-  display.setCursor(0, 36);
-  display.print("Freq10: ");
+  display.setCursor(0, 30);
+  display.print("F10: ");
   display.print(freq_pb10, 1);
-  display.println(" Hz");
+  display.println("Hz");
 
   // 第五行：PB11频率
-  display.setCursor(0, 48);
-  display.print("Freq11: ");
+  display.setCursor(0, 40);
+  display.print("F11: ");
   display.print(freq_pb11, 1);
-  display.println(" Hz");
+  display.println("Hz");
+
+  // 第六行：电流显示
+  display.setCursor(0, 50);
+  display.print("I: ");
+  display.print(current_amps, 2);  // 显示2位小数
+  display.println("A");
 
   display.display();
 }
@@ -347,6 +363,12 @@ void loop() {
     last_pb11_cnt = pb11_count;
     last_ms = now_ms;
   }
+
+  // ADC采样并计算电流
+  // STM32的ADC是12位，范围0-4095对应0-3.3V
+  int adc_value = analogRead(PIN_ADC_CURRENT);
+  float voltage = (adc_value / 4095.0) * 3.3;  // 计算电压(V)
+  current_amps = voltage / SHUNT_RESISTANCE;    // 电流 = 电压 / 电阻
 
   // OLED 显示更新（每100ms刷新一次）
   unsigned long currentTime = millis();
