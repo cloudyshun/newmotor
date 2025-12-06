@@ -234,19 +234,11 @@ void setup() {
 
   // PCA9685 初始化（必须在使用之前初始化）
   pca9685.begin();
-
-  // 1. 确保芯片唤醒（begin()内部调用reset()会设置MODE1=0x80，而非0x00）
-  //    reset()设置的是RESTART位，我们需要确保SLEEP位被清除
-  pca9685.wakeup();  // 清除SLEEP位，确保振荡器运行
-  delay(10);  // 等待10ms让振荡器稳定
-  Serial.println("PCA9685 Wake-up");
-
-  // 2. 设置MODE2寄存器的OUTDRV位为1（推挽输出模式）
-  pca9685.setOutputMode(true);  // true=推挽输出(Totem Pole), false=开漏输出(Open-Drain)
-  Serial.println("PCA9685 Output Mode: Push-Pull");
-
-  // 3. 设置PWM频率（内部会处理SLEEP模式切换，最终MODE1=0xA0: RESTART+AI）
   pca9685.setPWMFreq(PCA9685_FREQ);  // 设置PWM频率为1600Hz
+
+  // 设置MODE2寄存器的OUTDRV位为1（推挽输出模式）
+  pca9685.setOutputMode(true);  // true=推挽输出(Totem Pole), false=开漏输出(Open-Drain)
+
   delay(10);
   Serial.println("PCA9685 Initialized at 1600Hz");
 
