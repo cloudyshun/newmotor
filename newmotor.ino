@@ -41,6 +41,7 @@ int rs485Index = 0;
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <Adafruit_PWMServoDriver.h>  // PCA9685库
 
 #define OLED_WIDTH   128
 #define OLED_HEIGHT   64
@@ -48,6 +49,12 @@ int rs485Index = 0;
 const uint8_t OLED_ADDR = 0x3C;
 
 Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET);
+
+// PCA9685 PWM控制器
+#define PCA9685_ADDR 0x40        // PCA9685默认I2C地址
+#define PCA9685_FREQ 1600        // PWM频率 1600Hz（PCA9685最大频率）
+#define PCA9685_MOTOR_CHANNEL 0  // 电机PWM使用第0通道
+Adafruit_PWMServoDriver pca9685 = Adafruit_PWMServoDriver(PCA9685_ADDR);
 
 // ===== 595 脉冲 =====
 inline void pulseSRCLK() { digitalWrite(PIN_SRCLK, HIGH); digitalWrite(PIN_SRCLK, LOW); }
@@ -64,8 +71,24 @@ inline void motorForward() { shiftOut16(0x00, 0x01); } // 示例
 inline void motorReverse() { shiftOut16(0x01, 0x00); }
 inline void motorStop()    { shiftOut16(0x00, 0x00);  }
 
-const uint8_t SPEED_PERCENT = 90;
+const uint8_t SPEED_PERCENT = 100;  // 100%占空比
 inline uint8_t pctToDuty(uint8_t p){ return (uint8_t)((p * 255UL) / 100UL); }
+
+// ===== PCA9685 PWM 控制函数 =====
+// 设置PCA9685指定通道的PWM占空比
+// channel: 通道号 (0-15)
+// dutyCycle: 占空比 (0-255)，0=关闭，255=全开
+void setPCA9685PWM(uint8_t channel, uint8_t dutyCycle) {
+  if (channel > 15) return;  // 通道范围检查
+
+  // PCA9685使用12位分辨率 (0-4095)
+  // 将8位占空比 (0-255) 转换为12位 (0-4095)
+  uint16_t pwmValue = (uint16_t)((dutyCycle * 4095UL) / 255UL);
+
+  // setPWM(通道, 开始时间, 结束时间)
+  // 开始时间=0，结束时间=pwmValue，实现占空比控制
+  pca9685.setPWM(channel, 0, pwmValue);
+}
 
 // ===== 中值+均值滤波采样电流 =====
 float sampleCurrentFiltered() {
@@ -199,17 +222,7 @@ void setup() {
   shiftOut16(0x00, 0x00);
   digitalWrite(PIN_OE, LOW);
 
-  // 上电默认停止电机
-  // motorStop();
-  // analogWrite(PIN_PWM, 0);
-
-  motorReverse();
-  analogWrite(PIN_PWM, pctToDuty(SPEED_PERCENT));  // 测试：注释PWM输出
-
-  // motorForward();
-  // analogWrite(PIN_PWM, pctToDuty(SPEED_PERCENT));
-
-  // OLED 初始化
+  // I2C和OLED初始化（必须先初始化I2C）
   Wire.begin();
   display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
   display.clearDisplay();
@@ -218,6 +231,23 @@ void setup() {
   display.setCursor(0,0);
   display.println("Hall Monitor");
   display.display();
+
+  // PCA9685 初始化（必须在使用之前初始化）
+  pca9685.begin();
+  pca9685.setPWMFreq(PCA9685_FREQ);  // 设置PWM频率为1600Hz
+  delay(10);
+  Serial.println("PCA9685 Initialized at 1600Hz");
+
+  // 上电默认停止电机
+  // motorStop();
+  // analogWrite(PIN_PWM, 0);
+
+  motorReverse();
+ // analogWrite(PIN_PWM, pctToDuty(SPEED_PERCENT));  // 测试：注释PWM输出
+  setPCA9685PWM(PCA9685_MOTOR_CHANNEL, pctToDuty(SPEED_PERCENT));  // PCA9685输出90%占空比PWM
+
+  // motorForward();
+  // analogWrite(PIN_PWM, pctToDuty(SPEED_PERCENT));
 
   // 中断计数：检测所有跳变（CHANGE），兼容推挽和开漏
   attachInterrupt(digitalPinToInterrupt(PIN_PB10), ISR_pb10, CHANGE);
@@ -351,6 +381,7 @@ void processHexCommand(byte cmd[8]) {
     Serial.println("=> Motor FORWARD");
     motorForward();
     // analogWrite(PIN_PWM, pctToDuty(SPEED_PERCENT));  // 测试：注释PWM输出
+    setPCA9685PWM(PCA9685_MOTOR_CHANNEL, pctToDuty(SPEED_PERCENT));  // PCA9685输出90%占空比PWM
     sendHex485(cmd);  // 返回接收到的原指令
   }
   // 电机停止控制
@@ -358,6 +389,7 @@ void processHexCommand(byte cmd[8]) {
     Serial.println("=> Motor STOP");
     motorStop();
     // analogWrite(PIN_PWM, 0);  // 测试：注释PWM输出
+    setPCA9685PWM(PCA9685_MOTOR_CHANNEL, 0);  // PCA9685输出0%占空比（停止）
     sendHex485(cmd);  // 返回接收到的原指令
   }
   // 电机反转控制
@@ -365,6 +397,7 @@ void processHexCommand(byte cmd[8]) {
     Serial.println("=> Motor REVERSE");
     motorReverse();
     // analogWrite(PIN_PWM, pctToDuty(SPEED_PERCENT));  // 测试：注释PWM输出
+    setPCA9685PWM(PCA9685_MOTOR_CHANNEL, pctToDuty(SPEED_PERCENT));  // PCA9685输出90%占空比PWM
     sendHex485(cmd);  // 返回接收到的原指令
   }
   // 未知指令不响应
