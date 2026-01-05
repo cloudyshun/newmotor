@@ -6,10 +6,10 @@
    这里把 PB10 / PB11 当成来自电机的霍尔/脉冲输入
 */
 
-#define PIN_SER    PA0
-#define PIN_OE     PA1
-#define PIN_RCLK   PA2
-#define PIN_SRCLK  PA3
+#define PIN_SER    PB13
+#define PIN_OE     PB5
+#define PIN_RCLK   PB1
+#define PIN_SRCLK  PB14
 #define PIN_PWM    PB0
 #define PIN_PB10   PB10
 #define PIN_PB11   PB11
@@ -53,7 +53,7 @@ Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET);
 // PCA9685 PWM控制器
 #define PCA9685_ADDR 0x40        // PCA9685默认I2C地址
 #define PCA9685_FREQ 600        // PWM频率 1600Hz（PCA9685最大频率）
-#define PCA9685_MOTOR_CHANNEL 0  // 电机PWM使用第0通道
+#define PCA9685_MOTOR_CHANNEL 6  // 电机PWM使用第0通道
 Adafruit_PWMServoDriver pca9685 = Adafruit_PWMServoDriver(PCA9685_ADDR);
 
 // ===== 595 脉冲 =====
@@ -67,8 +67,8 @@ void shiftOut16(uint8_t highByte, uint8_t lowByte) {
   for (int8_t i = 7; i >= 0; --i) { digitalWrite(PIN_SER, (lowByte  >> i) & 0x01); pulseSRCLK(); }
   pulseRCLK();
 }
-inline void motorForward() { shiftOut16(0x00, 0x01); } // 示例
-inline void motorReverse() { shiftOut16(0x01, 0x00); }
+inline void motorForward() { shiftOut16(0x40, 0x00); } // 示例
+inline void motorReverse() { shiftOut16(0x00, 0x40); }
 inline void motorStop()    { shiftOut16(0x00, 0x00);  }
 
 const uint8_t SPEED_PERCENT = 100;  // 100%占空比
