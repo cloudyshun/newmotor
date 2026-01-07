@@ -11,16 +11,16 @@
 #define PIN_RCLK   PB1
 #define PIN_SRCLK  PB14
 #define PIN_PWM    PB0
-#define PIN_PB10   PB10
-#define PIN_PB11   PB11
+#define PIN_PB10   PB10   //PB12
+#define PIN_PB11   PB11   //PB15
 
 // ---- 74HC165 ----
-#define PIN_165_QH     PA4
-#define PIN_165_CLK    PA5
-#define PIN_165_SHLD   PA6
+// #define PIN_165_QH     PA4
+// #define PIN_165_CLK    PA5
+// #define PIN_165_SHLD   PA6
 
-// ---- ADC电流采样 ----
-#define PIN_ADC_CURRENT PA7       // 电流采样引脚
+// // ---- ADC电流采样 ----
+// #define PIN_ADC_CURRENT PA7       // 电流采样引脚
 #define SHUNT_RESISTANCE 0.05     // 采样电阻 R126 = 50mΩ = 0.05Ω
 #define CURRENT_SAMPLE_COUNT 99    // 中值滤波采样次数（建议奇数）
 #define CURRENT_UPDATE_INTERVAL 1000  // 电流更新间隔(ms)如果是500的话，可能会有零点误差（与单片机本身有关系）
@@ -53,7 +53,7 @@ Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET);
 // PCA9685 PWM控制器
 #define PCA9685_ADDR 0x40        // PCA9685默认I2C地址
 #define PCA9685_FREQ 600        // PWM频率 1600Hz（PCA9685最大频率）
-#define PCA9685_MOTOR_CHANNEL 6  // 电机PWM使用第0通道
+#define PCA9685_MOTOR_CHANNEL 5  // 电机PWM使用第0通道
 Adafruit_PWMServoDriver pca9685 = Adafruit_PWMServoDriver(PCA9685_ADDR);
 
 // ===== 595 脉冲 =====
@@ -67,8 +67,8 @@ void shiftOut16(uint8_t highByte, uint8_t lowByte) {
   for (int8_t i = 7; i >= 0; --i) { digitalWrite(PIN_SER, (lowByte  >> i) & 0x01); pulseSRCLK(); }
   pulseRCLK();
 }
-inline void motorForward() { shiftOut16(0x40, 0x00); } // 示例
-inline void motorReverse() { shiftOut16(0x00, 0x40); }
+inline void motorForward() { shiftOut16(0x20, 0x00); } // 示例
+inline void motorReverse() { shiftOut16(0x00, 0x20); }
 inline void motorStop()    { shiftOut16(0x00, 0x00);  }
 
 const uint8_t SPEED_PERCENT = 100;  // 100%占空比
@@ -91,51 +91,51 @@ void setPCA9685PWM(uint8_t channel, uint8_t dutyCycle) {
 }
 
 // ===== 中值+均值滤波采样电流 =====
-float sampleCurrentFiltered() {
-  float samples[CURRENT_SAMPLE_COUNT];
+// float sampleCurrentFiltered() {
+//   float samples[CURRENT_SAMPLE_COUNT];
 
-  // 采集多个样本
-  for (int i = 0; i < CURRENT_SAMPLE_COUNT; i++) {
-    int adc_value = analogRead(PIN_ADC_CURRENT);
-    float voltage = (adc_value / 4095.0) * 3.3;
-    samples[i] = voltage / SHUNT_RESISTANCE;
-    delayMicroseconds(100);  // 样本间隔100us
-  }
+//   // 采集多个样本
+//   for (int i = 0; i < CURRENT_SAMPLE_COUNT; i++) {
+//     int adc_value = analogRead(PIN_ADC_CURRENT);
+//     float voltage = (adc_value / 4095.0) * 3.3;
+//     samples[i] = voltage / SHUNT_RESISTANCE;
+//     delayMicroseconds(100);  // 样本间隔100us
+//   }
 
-  // 冒泡排序
-  for (int i = 0; i < CURRENT_SAMPLE_COUNT - 1; i++) {
-    for (int j = 0; j < CURRENT_SAMPLE_COUNT - i - 1; j++) {
-      if (samples[j] > samples[j + 1]) {
-        float temp = samples[j];
-        samples[j] = samples[j + 1];
-        samples[j + 1] = temp;
-      }
-    }
-  }
+//   // 冒泡排序
+//   for (int i = 0; i < CURRENT_SAMPLE_COUNT - 1; i++) {
+//     for (int j = 0; j < CURRENT_SAMPLE_COUNT - i - 1; j++) {
+//       if (samples[j] > samples[j + 1]) {
+//         float temp = samples[j];
+//         samples[j] = samples[j + 1];
+//         samples[j + 1] = temp;
+//       }
+//     }
+//   }
 
-  // 去掉最大最小值，计算中间值的平均
-  float sum = 0;
-  int start = 1;  // 去掉最小值
-  int end = CURRENT_SAMPLE_COUNT - 1;  // 去掉最大值
-  for (int i = start; i < end; i++) {
-    sum += samples[i];
-  }
+//   // 去掉最大最小值，计算中间值的平均
+//   float sum = 0;
+//   int start = 1;  // 去掉最小值
+//   int end = CURRENT_SAMPLE_COUNT - 1;  // 去掉最大值
+//   for (int i = start; i < end; i++) {
+//     sum += samples[i];
+//   }
 
-  return sum / (end - start);
-}
+//   return sum / (end - start);
+// }
 
 // ===== 读取 74HC165 的 H、G、F 三位 =====
-uint8_t read165_HGF() {
-  digitalWrite(PIN_165_SHLD, LOW);            // 并行装载
-  delayMicroseconds(1);
-  digitalWrite(PIN_165_SHLD, HIGH);           // 进入移位
-  uint8_t H = digitalRead(PIN_165_QH);        // 此时为 H
-  digitalWrite(PIN_165_CLK, HIGH); digitalWrite(PIN_165_CLK, LOW);
-  uint8_t G = digitalRead(PIN_165_QH);        // 移到 G
-  digitalWrite(PIN_165_CLK, HIGH); digitalWrite(PIN_165_CLK, LOW);
-  uint8_t F = digitalRead(PIN_165_QH);        // 移到 F
-  return (uint8_t)((H<<2)|(G<<1)|(F<<0));     // bit2=H, bit1=G, bit0=F
-}
+// uint8_t read165_HGF() {
+//   digitalWrite(PIN_165_SHLD, LOW);            // 并行装载
+//   delayMicroseconds(1);
+//   digitalWrite(PIN_165_SHLD, HIGH);           // 进入移位
+//   uint8_t H = digitalRead(PIN_165_QH);        // 此时为 H
+//   digitalWrite(PIN_165_CLK, HIGH); digitalWrite(PIN_165_CLK, LOW);
+//   uint8_t G = digitalRead(PIN_165_QH);        // 移到 G
+//   digitalWrite(PIN_165_CLK, HIGH); digitalWrite(PIN_165_CLK, LOW);
+//   uint8_t F = digitalRead(PIN_165_QH);        // 移到 F
+//   return (uint8_t)((H<<2)|(G<<1)|(F<<0));     // bit2=H, bit1=G, bit0=F
+// }
 
 // ====== 霍尔/脉冲统计（PB10 / PB11）- 正交解码 ======
 volatile int32_t position = 0;        // 相对位置（可正可负）
@@ -201,14 +201,14 @@ void setup() {
   pinMode(PIN_PWM,   OUTPUT);
 
   // 165
-  pinMode(PIN_165_QH,   INPUT);
-  pinMode(PIN_165_CLK,  OUTPUT);
-  pinMode(PIN_165_SHLD, OUTPUT);
-  digitalWrite(PIN_165_CLK,  LOW);
-  digitalWrite(PIN_165_SHLD, HIGH);
+  // pinMode(PIN_165_QH,   INPUT);
+  // pinMode(PIN_165_CLK,  OUTPUT);
+  // pinMode(PIN_165_SHLD, OUTPUT);
+  // digitalWrite(PIN_165_CLK,  LOW);
+  // digitalWrite(PIN_165_SHLD, HIGH);
 
   // ADC电流采样引脚初始化
-  pinMode(PIN_ADC_CURRENT, INPUT_ANALOG);
+  // pinMode(PIN_ADC_CURRENT, INPUT_ANALOG);
 
   // 霍尔/脉冲输入（启用上拉，兼容开漏输出）
   pinMode(PIN_PB10, INPUT_PULLUP);
@@ -415,17 +415,17 @@ void loop() {
   handleScreenCommands();
 
   // ==== 高频读取 165（检测限位开关变化）====
-  uint8_t hgf = read165_HGF();
+  // uint8_t hgf = read165_HGF();
 
-  // 检测 HGF 变化
-  if (hgf != last_hgf && last_hgf != 0xFF) {
-    hgf_change_count++;
-    // 记录到历史
-    hgf_history[history_index] = millis();
-    hgf_values[history_index] = hgf;
-    history_index = (history_index + 1) % 10;
-  }
-  last_hgf = hgf;
+  // // 检测 HGF 变化
+  // if (hgf != last_hgf && last_hgf != 0xFF) {
+  //   hgf_change_count++;
+  //   // 记录到历史
+  //   hgf_history[history_index] = millis();
+  //   hgf_values[history_index] = hgf;
+  //   history_index = (history_index + 1) % 10;
+  // }
+  // last_hgf = hgf;
 
   // 计算霍尔脉冲频率
   uint32_t now_ms = millis();
@@ -439,10 +439,10 @@ void loop() {
   }
 
   // 定时采样电流（每300ms采样一次，使用中值+均值滤波）
-  if (millis() - lastCurrentUpdate >= CURRENT_UPDATE_INTERVAL) {
-    current_amps = sampleCurrentFiltered();
-    lastCurrentUpdate = millis();
-  }
+  // if (millis() - lastCurrentUpdate >= CURRENT_UPDATE_INTERVAL) {
+  //   current_amps = sampleCurrentFiltered();
+  //   lastCurrentUpdate = millis();
+  // }
 
   // OLED 显示更新（每100ms刷新一次）
   unsigned long currentTime = millis();
