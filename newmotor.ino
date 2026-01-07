@@ -10,7 +10,7 @@
 #define PIN_OE     PB5
 #define PIN_RCLK   PB1
 #define PIN_SRCLK  PB14
-#define PIN_PWM    PB0
+// #define PIN_PWM    PB0  // PB0已被ADC电流采样占用
 #define PIN_PB10   PB10   //PB12
 #define PIN_PB11   PB11   //PB15
 
@@ -19,8 +19,13 @@
 // #define PIN_165_CLK    PA5
 // #define PIN_165_SHLD   PA6
 
-// // ---- ADC电流采样 ----
-// #define PIN_ADC_CURRENT PA7       // 电流采样引脚
+// ---- 74HC4051 多路复用器 ----
+#define PIN_4051_S0    PA8        // 选择位S0
+#define PIN_4051_S1    PA11       // 选择位S1
+#define PIN_4051_S2    PA12       // 选择位S2
+
+// ---- ADC电流采样 ----
+#define PIN_ADC_CURRENT PB0       // 电流采样引脚（4051的Z输出）
 #define SHUNT_RESISTANCE 0.05     // 采样电阻 R126 = 50mΩ = 0.05Ω
 #define CURRENT_SAMPLE_COUNT 99    // 中值滤波采样次数（建议奇数）
 #define CURRENT_UPDATE_INTERVAL 1000  // 电流更新间隔(ms)如果是500的话，可能会有零点误差（与单片机本身有关系）
@@ -90,39 +95,46 @@ void setPCA9685PWM(uint8_t channel, uint8_t dutyCycle) {
   pca9685.setPWM(channel, 0, pwmValue);
 }
 
+// ===== 设置74HC4051选择Y5通道 =====
+void select4051Channel(uint8_t channel) {
+  digitalWrite(PIN_4051_S0, channel & 0x01);
+  digitalWrite(PIN_4051_S1, (channel >> 1) & 0x01);
+  digitalWrite(PIN_4051_S2, (channel >> 2) & 0x01);
+}
+
 // ===== 中值+均值滤波采样电流 =====
-// float sampleCurrentFiltered() {
-//   float samples[CURRENT_SAMPLE_COUNT];
+float sampleCurrentFiltered() {
+  float samples[CURRENT_SAMPLE_COUNT];
 
-//   // 采集多个样本
-//   for (int i = 0; i < CURRENT_SAMPLE_COUNT; i++) {
-//     int adc_value = analogRead(PIN_ADC_CURRENT);
-//     float voltage = (adc_value / 4095.0) * 3.3;
-//     samples[i] = voltage / SHUNT_RESISTANCE;
-//     delayMicroseconds(100);  // 样本间隔100us
-//   }
+  // 采集多个样本
+  for (int i = 0; i < CURRENT_SAMPLE_COUNT; i++) {
+    int adc_value = analogRead(PIN_ADC_CURRENT);
+    float voltage = (adc_value / 4095.0) * 3.3;
+    samples[i] = voltage / SHUNT_RESISTANCE;
+    delayMicroseconds(100);  // 样本间隔100us
+  }
 
-//   // 冒泡排序
-//   for (int i = 0; i < CURRENT_SAMPLE_COUNT - 1; i++) {
-//     for (int j = 0; j < CURRENT_SAMPLE_COUNT - i - 1; j++) {
-//       if (samples[j] > samples[j + 1]) {
-//         float temp = samples[j];
-//         samples[j] = samples[j + 1];
-//         samples[j + 1] = temp;
-//       }
-//     }
-//   }
+  // 冒泡排序
+  for (int i = 0; i < CURRENT_SAMPLE_COUNT - 1; i++) {
+    for (int j = 0; j < CURRENT_SAMPLE_COUNT - i - 1; j++) {
+      if (samples[j] > samples[j + 1]) {
+        float temp = samples[j];
+        samples[j] = samples[j + 1];
+        samples[j + 1] = temp;
+      }
+    }
+  }
 
-//   // 去掉最大最小值，计算中间值的平均
-//   float sum = 0;
-//   int start = 1;  // 去掉最小值
-//   int end = CURRENT_SAMPLE_COUNT - 1;  // 去掉最大值
-//   for (int i = start; i < end; i++) {
-//     sum += samples[i];
-//   }
+  // 去掉最大最小值，计算中间值的平均
+  float sum = 0;
+  int start = 1;  // 去掉最小值
+  int end = CURRENT_SAMPLE_COUNT - 1;  // 去掉最大值
+  for (int i = start; i < end; i++) {
+    sum += samples[i];
+  }
 
-//   return sum / (end - start);
-// }
+  return sum / (end - start);
+}
 
 // ===== 读取 74HC165 的 H、G、F 三位 =====
 // uint8_t read165_HGF() {
@@ -193,12 +205,19 @@ void setup() {
 
   Serial.println("RS485 Initialized (Serial1)");
 
+  // 4051多路复用器引脚初始化
+  pinMode(PIN_4051_S0, OUTPUT);
+  pinMode(PIN_4051_S1, OUTPUT);
+  pinMode(PIN_4051_S2, OUTPUT);
+  select4051Channel(5);  // 选择Y5通道
+  Serial.println("74HC4051 set to Y5 channel");
+
   // 595
   pinMode(PIN_SER,   OUTPUT);
   pinMode(PIN_OE,    OUTPUT);
   pinMode(PIN_RCLK,  OUTPUT);
   pinMode(PIN_SRCLK, OUTPUT);
-  pinMode(PIN_PWM,   OUTPUT);
+  // pinMode(PIN_PWM,   OUTPUT);  // PB0已被ADC占用
 
   // 165
   // pinMode(PIN_165_QH,   INPUT);
@@ -208,7 +227,7 @@ void setup() {
   // digitalWrite(PIN_165_SHLD, HIGH);
 
   // ADC电流采样引脚初始化
-  // pinMode(PIN_ADC_CURRENT, INPUT_ANALOG);
+  pinMode(PIN_ADC_CURRENT, INPUT_ANALOG);
 
   // 霍尔/脉冲输入（启用上拉，兼容开漏输出）
   pinMode(PIN_PB10, INPUT_PULLUP);
@@ -438,11 +457,11 @@ void loop() {
     last_ms = now_ms;
   }
 
-  // 定时采样电流（每300ms采样一次，使用中值+均值滤波）
-  // if (millis() - lastCurrentUpdate >= CURRENT_UPDATE_INTERVAL) {
-  //   current_amps = sampleCurrentFiltered();
-  //   lastCurrentUpdate = millis();
-  // }
+  // 定时采样电流（每1000ms采样一次，使用中值+均值滤波）
+  if (millis() - lastCurrentUpdate >= CURRENT_UPDATE_INTERVAL) {
+    current_amps = sampleCurrentFiltered();
+    lastCurrentUpdate = millis();
+  }
 
   // OLED 显示更新（每100ms刷新一次）
   unsigned long currentTime = millis();
