@@ -21,8 +21,8 @@
 
 // ---- 74HC4051 多路复用器 ----
 #define PIN_4051_S0    PA8        // 选择位S0
-#define PIN_4051_S1    PA11       // 选择位S1
-#define PIN_4051_S2    PA12       // 选择位S2
+#define PIN_4051_S1    PB3        // 选择位S1 (需禁用JTAG)
+#define PIN_4051_S2    PB4        // 选择位S2 (需禁用JTAG)
 
 // ---- ADC电流采样 ----
 #define PIN_ADC_CURRENT PB0       // 电流采样引脚（4051的Z输出）
@@ -189,6 +189,9 @@ unsigned long lastCurrentUpdate = 0;  // 电流采样计时器
 unsigned long lastOLEDUpdate = 0;
 
 void setup() {
+  // 禁用JTAG，释放PB3/PB4作为普通GPIO
+  afio_cfg_debug_ports(AFIO_DEBUG_SW_ONLY);  // 仅保留SWD调试，禁用JTAG
+
   // 调试串口初始化
   Serial.begin(9600);
   delay(1000);
