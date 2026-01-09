@@ -1,5 +1,5 @@
 /* STM32F103C8T6 + 74HC595 x2 + 74HC165 + AT24C02 + PCA9685 + OLED
-   功能：电机控制、正交解码、电流监测、位置记忆（EEPROM）
+   功能：电机控制、正交解码、电流监测、位置记忆（EEPROM 自动保存版）
 */
 
 #include <Wire.h>
@@ -55,6 +55,11 @@ volatile int32_t position = 0; // 相对位置（掉电会从 EEPROM 恢复）
 volatile uint32_t pb10_count = 0;
 volatile uint32_t pb11_count = 0;
 
+// 自动保存相关变量
+int32_t lastSavedPosition = 0;       // 上次写入 EEPROM 的值
+int32_t lastLoopPosition = 0;        // 上次循环检测到的位置值
+unsigned long lastPosChangeTime = 0; // 位置最后一次变化的时间戳
+
 float current_amps = 0.0f;
 unsigned long lastCurrentUpdate = 0;
 unsigned long lastOLEDUpdate = 0;
@@ -80,8 +85,9 @@ void savePositionToEEPROM(int32_t pos) {
     Wire.write(data[i]);
   }
   Wire.endTransmission();
-  delay(5); // AT24C02 写周期延时
-  Serial.println("Position saved to EEPROM.");
+  delay(5); // AT24C02 写周期延时（必须！）
+  Serial.print("Auto-Save Position: ");
+  Serial.println(pos);
 }
 
 // 从 EEPROM 读取 32 位 position
@@ -176,12 +182,11 @@ void processHexCommand(byte cmd[8]) {
     sendHex485(cmd);
   }
   else if (memcmp(cmd, motorStopCmd, 8) == 0) {
-    Serial.println("=> Motor STOP & Saving Pos...");
+    Serial.println("=> Motor STOP");
     motorStop();
     setPCA9685PWM(PCA9685_MOTOR_CHANNEL, 0);
     
-    // 【关键】电机停止时保存位置到 EEPROM
-    savePositionToEEPROM(position);
+    // 【修改】这里不再直接保存，改为在 Loop 中自动检测静止保存
     
     sendHex485(cmd);
   }
@@ -226,6 +231,13 @@ void drawOLED() {
   display.setCursor(0, 30);  display.print("F10: "); display.print(freq_pb10, 1); display.println("Hz");
   display.setCursor(0, 40);  display.print("F11: "); display.print(freq_pb11, 1); display.println("Hz");
   display.setCursor(0, 50);  display.print("I: "); display.print(current_amps, 2); display.println("A");
+  
+  // 可以在屏幕上显示一个状态，告诉用户数据已保存
+  if (position == lastSavedPosition) {
+    display.setCursor(100, 0); 
+    display.print("SV"); // Saved
+  }
+  
   display.display();
 }
 
@@ -257,45 +269,46 @@ void setup() {
   // --- 2. 初始化 I2C 总线 ---
   Wire.begin(); 
 
-  // --- 3. 【关键修改】先初始化 OLED，保证屏幕能亮 ---
+  // --- 3. 初始化 OLED (先亮屏) ---
   display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0,0);
   display.println("System Init...");
-  display.display(); // 先显示这一行，证明 OLED 没坏
+  display.display();
   
   // --- 4. 初始化 PCA9685 ---
   pca9685.begin();
   pca9685.setPWMFreq(PCA9685_FREQ);
   pca9685.setOutputMode(true);
 
-  // --- 5. 【带检测的】读取 EEPROM ---
-  // 先检查设备是否在线，防止卡死
+  // --- 5. 读取 EEPROM ---
   Wire.beginTransmission(EEPROM_ADDR);
   byte error = Wire.endTransmission();
 
   if (error == 0) {
-    // 设备存在，读取数据
     position = readPositionFromEEPROM();
     Serial.print("EEPROM OK. Pos: ");
     Serial.println(position);
-    
     display.println("Memory: OK");
     display.print("Load Pos: ");
     display.println(position);
   } else {
-    // 设备不存在或接线错误
     Serial.print("EEPROM Error: ");
     Serial.println(error);
-    
     display.println("Memory: ERROR!");
     display.println("Check Wiring!");
-    // position 保持为 0
+    position = 0; // 读不到则重置为0
   }
-  display.display(); // 刷新屏幕显示存储器状态
-  delay(1500);       // 延时一下让你看清屏幕上的提示
+  
+  // 【关键】初始化自动保存相关的变量
+  lastSavedPosition = position; 
+  lastLoopPosition = position;
+  lastPosChangeTime = millis();
+
+  display.display(); 
+  delay(1500);
 
   // --- 6. 开启中断 ---
   attachInterrupt(digitalPinToInterrupt(PIN_PB10), ISR_pb10, CHANGE);
@@ -328,5 +341,23 @@ void loop() {
   if (millis() - lastOLEDUpdate >= 100) {
     drawOLED();
     lastOLEDUpdate = millis();
+  }
+
+  // ================== 新增：自动保存逻辑 ==================
+  
+  // 1. 监测位置变化
+  if (position != lastLoopPosition) {
+    lastPosChangeTime = millis(); // 只要位置在变，就更新时间戳
+    lastLoopPosition = position;  // 更新缓存
+  }
+
+  // 2. 只有当位置和上次保存的不一样，且静止时间超过 1000ms 时，才执行保存
+  if ((position != lastSavedPosition) && (millis() - lastPosChangeTime > 1000)) {
+    
+    // 执行保存
+    savePositionToEEPROM(position);
+    
+    // 更新“已保存”标记，避免重复写
+    lastSavedPosition = position; 
   }
 }
