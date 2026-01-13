@@ -27,8 +27,16 @@
 #define SERIAL_SCREEN Serial1
 
 // ---- AT24C02 EEPROM 配置 ----
-#define EEPROM_ADDR 0x50      // AT24C02 器件地址
-#define ADDR_POS_STORAGE 0x00 // position 数据在 EEPROM 中的起始存储地址
+#define EEPROM_ADDR 0x50           // AT24C02 器件地址
+#define ADDR_MAGIC_NUMBER 0x00     // MagicNumber 地址
+#define MAGIC_NUMBER 0x55          // 初始化标志
+#define ADDR_MOTOR1_POS 0x01       // 电机1位置 (0x01-0x02)
+#define ADDR_MOTOR2_POS 0x03       // 电机2位置 (0x03-0x04)
+#define ADDR_MOTOR3_POS 0x05       // 电机3位置 (0x05-0x06)
+#define ADDR_MOTOR4_POS 0x07       // 电机4位置 (0x07-0x08)
+#define ADDR_MOTOR5_POS 0x09       // 电机5位置 (0x09-0x0A)
+#define ADDR_MOTOR6_POS 0x0B       // 电机6位置 (0x0B-0x0C)
+#define ADDR_MOTOR7_POS 0x0D       // 电机7位置 (0x0D-0x0E)
 
 // ---- 电机控制命令 ----
 const byte motorForwardCmd[8] = {0xEE, 0x02, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00};
@@ -51,13 +59,13 @@ Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET);
 Adafruit_PWMServoDriver pca9685 = Adafruit_PWMServoDriver(PCA9685_ADDR);
 
 // ---- 全局变量 ----
-volatile int32_t position = 0; // 相对位置（掉电会从 EEPROM 恢复）
+volatile int16_t position = 0; // 相对位置（掉电会从 EEPROM 恢复）
 volatile uint32_t pb10_count = 0;
 volatile uint32_t pb11_count = 0;
 
 // 自动保存相关变量
-int32_t lastSavedPosition = 0;       // 上次写入 EEPROM 的值
-int32_t lastLoopPosition = 0;        // 上次循环检测到的位置值
+int16_t lastSavedPosition = 0;       // 上次写入 EEPROM 的值
+int16_t lastLoopPosition = 0;        // 上次循环检测到的位置值
 unsigned long lastPosChangeTime = 0; // 位置最后一次变化的时间戳
 
 float current_amps = 0.0f;
@@ -71,39 +79,77 @@ const uint8_t SPEED_PERCENT = 100;
 
 // ================= AT24C02 存储逻辑 =================
 
-// 将 32 位 position 写入 EEPROM
-void savePositionToEEPROM(int32_t pos) {
-  uint8_t data[4];
-  data[0] = (pos >> 24) & 0xFF;
-  data[1] = (pos >> 16) & 0xFF;
-  data[2] = (pos >> 8) & 0xFF;
-  data[3] = pos & 0xFF;
+// 将 16 位 position 写入 EEPROM (2字节补码)
+void savePositionToEEPROM(int16_t pos) {
+  uint8_t data[2];
+  data[0] = (pos >> 8) & 0xFF;  // 高字节
+  data[1] = pos & 0xFF;          // 低字节
 
   Wire.beginTransmission(EEPROM_ADDR);
-  Wire.write(ADDR_POS_STORAGE); 
-  for (int i = 0; i < 4; i++) {
-    Wire.write(data[i]);
-  }
+  Wire.write(ADDR_MOTOR1_POS);
+  Wire.write(data[0]);
+  Wire.write(data[1]);
   Wire.endTransmission();
   delay(5); // AT24C02 写周期延时（必须！）
   Serial.print("Auto-Save Position: ");
   Serial.println(pos);
 }
 
-// 从 EEPROM 读取 32 位 position
-int32_t readPositionFromEEPROM() {
-  uint8_t data[4] = {0, 0, 0, 0};
+// 从 EEPROM 读取 16 位 position (2字节补码)
+int16_t readPositionFromEEPROM() {
+  uint8_t data[2] = {0, 0};
   Wire.beginTransmission(EEPROM_ADDR);
-  Wire.write(ADDR_POS_STORAGE);
+  Wire.write(ADDR_MOTOR1_POS);
   Wire.endTransmission();
 
-  Wire.requestFrom(EEPROM_ADDR, (uint8_t)4);
-  for (int i = 0; i < 4 && Wire.available(); i++) {
+  Wire.requestFrom(EEPROM_ADDR, (uint8_t)2);
+  for (int i = 0; i < 2 && Wire.available(); i++) {
     data[i] = Wire.read();
   }
 
-  return ((int32_t)data[0] << 24) | ((int32_t)data[1] << 16) | 
-         ((int32_t)data[2] << 8)  | (int32_t)data[3];
+  return ((int16_t)data[0] << 8) | (int16_t)data[1];
+}
+
+// 初始化 EEPROM（首次上电检测）
+void initEEPROM() {
+  Wire.beginTransmission(EEPROM_ADDR);
+  Wire.write(ADDR_MAGIC_NUMBER);
+  Wire.endTransmission();
+
+  Wire.requestFrom(EEPROM_ADDR, (uint8_t)1);
+  uint8_t magic = 0;
+  if (Wire.available()) {
+    magic = Wire.read();
+  }
+
+  if (magic != MAGIC_NUMBER) {
+    // 首次上电：写入 MagicNumber 和初始化所有位置为 0
+    Serial.println("First boot detected. Initializing EEPROM...");
+
+    // 写入 MagicNumber
+    Wire.beginTransmission(EEPROM_ADDR);
+    Wire.write(ADDR_MAGIC_NUMBER);
+    Wire.write(MAGIC_NUMBER);
+    Wire.endTransmission();
+    delay(5);
+
+    // 初始化 7 个电机位置为 0
+    uint8_t motorAddrs[7] = {ADDR_MOTOR1_POS, ADDR_MOTOR2_POS, ADDR_MOTOR3_POS,
+                              ADDR_MOTOR4_POS, ADDR_MOTOR5_POS, ADDR_MOTOR6_POS,
+                              ADDR_MOTOR7_POS};
+    for (int i = 0; i < 7; i++) {
+      Wire.beginTransmission(EEPROM_ADDR);
+      Wire.write(motorAddrs[i]);
+      Wire.write(0x00);  // 高字节
+      Wire.write(0x00);  // 低字节
+      Wire.endTransmission();
+      delay(5);
+    }
+
+    Serial.println("EEPROM initialized successfully.");
+  } else {
+    Serial.println("EEPROM already initialized.");
+  }
 }
 
 // ================= 硬件控制基础函数 =================
@@ -288,10 +334,17 @@ void setup() {
   byte error = Wire.endTransmission();
 
   if (error == 0) {
-    position = readPositionFromEEPROM();
-    Serial.print("EEPROM OK. Pos: ");
-    Serial.println(position);
+    Serial.println("EEPROM detected.");
     display.println("Memory: OK");
+    display.display();
+
+    // 初始化检测（首次上电会写入 MagicNumber 和默认值）
+    initEEPROM();
+
+    // 读取位置数据
+    position = readPositionFromEEPROM();
+    Serial.print("Load Position: ");
+    Serial.println(position);
     display.print("Load Pos: ");
     display.println(position);
   } else {
