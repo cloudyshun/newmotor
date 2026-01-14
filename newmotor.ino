@@ -534,34 +534,33 @@ void handleScreenCommands() {
 }
 
 void drawOLED() {
-  // 暂时只显示motor5的信息
-  uint8_t motorIndex = 5;
-
   display.clearDisplay();
   display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.print("M"); display.print(motorIndex);
-  display.print(" Pos: "); display.println(motors[motorIndex].position);
 
-  display.setCursor(0, 10);
-  display.print("A: "); display.println(motors[motorIndex].hallA_count);
+  // 显示所有7个电机的精简信息
+  for (int i = 0; i < 7; i++) {
+    display.setCursor(0, i * 9);
 
-  display.setCursor(0, 20);
-  display.print("B: "); display.println(motors[motorIndex].hallB_count);
+    // 电机号
+    display.print("M");
+    display.print(i);
+    display.print(":");
 
-  display.setCursor(0, 30);
-  display.print("FA: "); display.print(motors[motorIndex].freq_hallA, 1); display.println("Hz");
+    // 位置（6字符宽度）
+    display.setCursor(18, i * 9);
+    if (motors[i].position >= 0) display.print(" ");
+    display.print(motors[i].position);
 
-  display.setCursor(0, 40);
-  display.print("FB: "); display.print(motors[motorIndex].freq_hallB, 1); display.println("Hz");
+    // 电流（5字符宽度）
+    display.setCursor(60, i * 9);
+    display.print(motors[i].current_amps, 1);
+    display.print("A");
 
-  display.setCursor(0, 50);
-  display.print("I: "); display.print(motors[motorIndex].current_amps, 2); display.println("A");
-
-  // 显示保存状态
-  if (motors[motorIndex].position == motors[motorIndex].lastSavedPosition) {
-    display.setCursor(100, 0);
-    display.print("SV");
+    // 保存状态
+    if (motors[i].position == motors[i].lastSavedPosition) {
+      display.setCursor(110, i * 9);
+      display.print("S");
+    }
   }
 
   display.display();
