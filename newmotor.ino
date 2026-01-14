@@ -38,6 +38,13 @@
 #define ADDR_MOTOR6_POS 0x0B       // 电机6位置 (0x0B-0x0C)
 #define ADDR_MOTOR7_POS 0x0D       // 电机7位置 (0x0D-0x0E)
 
+// 电流采样全局变量
+#define FILTER_N 50  // 滤波长度
+float current_buffer[FILTER_N]; // 环形缓冲区
+int buffer_index = 0;
+float sum_current = 0.0;
+bool buffer_filled = false;
+
 // ---- 电机控制命令 ----
 const byte motorForwardCmd[8] = {0xEE, 0x02, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00};
 const byte motorStopCmd[8]    = {0xEE, 0x02, 0x01, 0x03, 0x00, 0x00, 0x00, 0x00};
@@ -199,6 +206,33 @@ float sampleCurrentFiltered() {
   float sum = 0;
   for (int i = 1; i < CURRENT_SAMPLE_COUNT - 1; i++) sum += samples[i];
   return sum / (CURRENT_SAMPLE_COUNT - 2);
+}
+
+// 替换掉原来的 sampleCurrentFiltered
+void updateCurrentReading() {
+    // 1. 读取一次 ADC (不延时)
+    int adc_value = analogRead(PIN_ADC_CURRENT);
+    float voltage = (adc_value / 4095.0) * 3.3;
+    float new_amp = voltage / SHUNT_RESISTANCE;
+
+    // 2. 递推平均算法 (减去最旧的，加上最新的)
+    sum_current -= current_buffer[buffer_index]; // 减去旧值
+    current_buffer[buffer_index] = new_amp;      // 存入新值
+    sum_current += new_amp;                      // 加上新值
+
+    // 3. 更新索引
+    buffer_index++;
+    if (buffer_index >= FILTER_N) {
+        buffer_index = 0;
+        buffer_filled = true;
+    }
+
+    // 4. 计算平均值并赋值给全局变量 current_amps
+    if (buffer_filled) {
+        current_amps = sum_current / FILTER_N;
+    } else {
+        current_amps = sum_current / buffer_index; // 还没填满时除以当前数量
+    }
 }
 
 // ================= 中断处理 =================
@@ -385,8 +419,14 @@ void loop() {
   }
 
   // 电流采样
-  if (millis() - lastCurrentUpdate >= CURRENT_UPDATE_INTERVAL) {
-    current_amps = sampleCurrentFiltered();
+  // if (millis() - lastCurrentUpdate >= CURRENT_UPDATE_INTERVAL) {
+  //   current_amps = sampleCurrentFiltered();
+  //   lastCurrentUpdate = millis();
+  // }
+  // 新的写法：每次 Loop 都采一个样，积少成多，完全不卡顿
+    // 只要控制采样间隔别太快就行，例如每 5ms 采一个点
+  if (millis() - lastCurrentUpdate >= 5) { 
+    updateCurrentReading();
     lastCurrentUpdate = millis();
   }
 
