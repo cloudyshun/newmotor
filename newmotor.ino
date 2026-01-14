@@ -379,9 +379,73 @@ void updateCurrentReading(uint8_t motorIndex) {
 }
 
 // ================= 中断处理 =================
-// 注意：中断处理函数需要根据实际使用的引脚动态生成
-// 这里暂时保留motor5的中断作为示例（PB10/PB11）
 
+// Motor0 (PA0, PA1)
+void ISR_motor0_A() {
+  motors[0].hallA_count++;
+  if (digitalRead(motors[0].hallPinA) == digitalRead(motors[0].hallPinB)) {
+    motors[0].position++;
+  } else {
+    motors[0].position--;
+  }
+}
+void ISR_motor0_B() {
+  motors[0].hallB_count++;
+}
+
+// Motor1 (PA2, PA3)
+void ISR_motor1_A() {
+  motors[1].hallA_count++;
+  if (digitalRead(motors[1].hallPinA) == digitalRead(motors[1].hallPinB)) {
+    motors[1].position++;
+  } else {
+    motors[1].position--;
+  }
+}
+void ISR_motor1_B() {
+  motors[1].hallB_count++;
+}
+
+// Motor2 (PA4, PA5)
+void ISR_motor2_A() {
+  motors[2].hallA_count++;
+  if (digitalRead(motors[2].hallPinA) == digitalRead(motors[2].hallPinB)) {
+    motors[2].position++;
+  } else {
+    motors[2].position--;
+  }
+}
+void ISR_motor2_B() {
+  motors[2].hallB_count++;
+}
+
+// Motor3 (PA6, PA7)
+void ISR_motor3_A() {
+  motors[3].hallA_count++;
+  if (digitalRead(motors[3].hallPinA) == digitalRead(motors[3].hallPinB)) {
+    motors[3].position++;
+  } else {
+    motors[3].position--;
+  }
+}
+void ISR_motor3_B() {
+  motors[3].hallB_count++;
+}
+
+// Motor4 (PB8, PB9)
+void ISR_motor4_A() {
+  motors[4].hallA_count++;
+  if (digitalRead(motors[4].hallPinA) == digitalRead(motors[4].hallPinB)) {
+    motors[4].position++;
+  } else {
+    motors[4].position--;
+  }
+}
+void ISR_motor4_B() {
+  motors[4].hallB_count++;
+}
+
+// Motor5 (PB10, PB11)
 void ISR_motor5_A() {
   motors[5].hallA_count++;
   if (digitalRead(motors[5].hallPinA) == digitalRead(motors[5].hallPinB)) {
@@ -390,9 +454,21 @@ void ISR_motor5_A() {
     motors[5].position--;
   }
 }
-
 void ISR_motor5_B() {
   motors[5].hallB_count++;
+}
+
+// Motor6 (PB12, PB15)
+void ISR_motor6_A() {
+  motors[6].hallA_count++;
+  if (digitalRead(motors[6].hallPinA) == digitalRead(motors[6].hallPinB)) {
+    motors[6].position++;
+  } else {
+    motors[6].position--;
+  }
+}
+void ISR_motor6_B() {
+  motors[6].hallB_count++;
 }
 
 // ================= 指令解析与执行 =================
@@ -577,9 +653,38 @@ void setup() {
   display.display();
   delay(1500);
 
-  // --- 6. 开启中断（暂时只为motor5开启） ---
+  // --- 6. 为所有7个电机开启中断 ---
+  Serial.println("Attaching interrupts for all motors...");
+
+  // Motor0 (PA0, PA1)
+  attachInterrupt(digitalPinToInterrupt(motors[0].hallPinA), ISR_motor0_A, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[0].hallPinB), ISR_motor0_B, CHANGE);
+
+  // Motor1 (PA2, PA3)
+  attachInterrupt(digitalPinToInterrupt(motors[1].hallPinA), ISR_motor1_A, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[1].hallPinB), ISR_motor1_B, CHANGE);
+
+  // Motor2 (PA4, PA5)
+  attachInterrupt(digitalPinToInterrupt(motors[2].hallPinA), ISR_motor2_A, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[2].hallPinB), ISR_motor2_B, CHANGE);
+
+  // Motor3 (PA6, PA7)
+  attachInterrupt(digitalPinToInterrupt(motors[3].hallPinA), ISR_motor3_A, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[3].hallPinB), ISR_motor3_B, CHANGE);
+
+  // Motor4 (PB8, PB9)
+  attachInterrupt(digitalPinToInterrupt(motors[4].hallPinA), ISR_motor4_A, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[4].hallPinB), ISR_motor4_B, CHANGE);
+
+  // Motor5 (PB10, PB11)
   attachInterrupt(digitalPinToInterrupt(motors[5].hallPinA), ISR_motor5_A, CHANGE);
   attachInterrupt(digitalPinToInterrupt(motors[5].hallPinB), ISR_motor5_B, CHANGE);
+
+  // Motor6 (PB12, PB15)
+  attachInterrupt(digitalPinToInterrupt(motors[6].hallPinA), ISR_motor6_A, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[6].hallPinB), ISR_motor6_B, CHANGE);
+
+  Serial.println("All interrupts attached successfully.");
 
   last_ms = millis();
 }
