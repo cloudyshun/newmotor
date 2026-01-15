@@ -80,6 +80,9 @@ struct Motor {
   int16_t lastSavedPosition;    // 上次保存到EEPROM的位置
   int16_t lastLoopPosition;     // 上次循环检测的位置
   unsigned long lastPosChangeTime; // 位置最后变化时间戳
+
+  // 过流保护
+  float maxCurrent;             // 最大允许电流（A）
 };
 
 // ---- 7个电机实例 ----
@@ -95,7 +98,8 @@ Motor motors[7] = {
     0, 0, 0,                // position, hallA_count, hallB_count
     {0}, 0, 0.0, false, 0.0, // current_buffer, buffer_index, sum_current, buffer_filled, current_amps
     0, 0, 0.0, 0.0,         // last_hallA_cnt, last_hallB_cnt, freq_hallA, freq_hallB
-    0, 0, 0                 // lastSavedPosition, lastLoopPosition, lastPosChangeTime
+    0, 0, 0,                // lastSavedPosition, lastLoopPosition, lastPosChangeTime
+    1.0                     // maxCurrent (A)
   },
   // motor1
   {
@@ -107,7 +111,8 @@ Motor motors[7] = {
     0, 0, 0,
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
-    0, 0, 0
+    0, 0, 0,
+    1.0
   },
   // motor2
   {
@@ -119,7 +124,8 @@ Motor motors[7] = {
     0, 0, 0,
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
-    0, 0, 0
+    0, 0, 0,
+    1.0
   },
   // motor3
   {
@@ -131,7 +137,8 @@ Motor motors[7] = {
     0, 0, 0,
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
-    0, 0, 0
+    0, 0, 0,
+    0.9
   },
   // motor4
   {
@@ -143,7 +150,8 @@ Motor motors[7] = {
     0, 0, 0,
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
-    0, 0, 0
+    0, 0, 0,
+    0.9
   },
   // motor5
   {
@@ -155,7 +163,8 @@ Motor motors[7] = {
     0, 0, 0,
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
-    0, 0, 0
+    0, 0, 0,
+    0.9
   },
   // motor6
   {
@@ -167,7 +176,8 @@ Motor motors[7] = {
     0, 0, 0,
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
-    0, 0, 0
+    0, 0, 0,
+    0.9
   }
 };
 
@@ -709,6 +719,20 @@ void loop() {
   static uint8_t currentMotorIndex = 0;
   if (millis() - lastCurrentUpdate >= 5) {
     updateCurrentReading(currentMotorIndex);
+
+    // 过流保护检测
+    if (motors[currentMotorIndex].current_amps > motors[currentMotorIndex].maxCurrent) {
+      motorStop(currentMotorIndex);
+      setPCA9685PWM(motors[currentMotorIndex].pwmChannel, 0);
+      Serial.print("!!! OVERCURRENT Motor");
+      Serial.print(currentMotorIndex);
+      Serial.print(": ");
+      Serial.print(motors[currentMotorIndex].current_amps, 2);
+      Serial.print("A > ");
+      Serial.print(motors[currentMotorIndex].maxCurrent, 2);
+      Serial.println("A - STOPPED");
+    }
+
     currentMotorIndex++;
     if (currentMotorIndex >= 7) currentMotorIndex = 0;
     lastCurrentUpdate = millis();
