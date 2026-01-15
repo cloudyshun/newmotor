@@ -551,9 +551,9 @@ void drawOLED() {
     if (motors[i].position >= 0) display.print(" ");
     display.print(motors[i].position);
 
-    // 电流（5字符宽度）
+    // 电流（6字符宽度）
     display.setCursor(60, i * 9);
-    display.print(motors[i].current_amps, 1);
+    display.print(motors[i].current_amps, 2);
     display.print("A");
 
     // 保存状态
