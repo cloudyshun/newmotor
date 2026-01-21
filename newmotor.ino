@@ -99,7 +99,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0, // current_buffer, buffer_index, sum_current, buffer_filled, current_amps
     0, 0, 0.0, 0.0,         // last_hallA_cnt, last_hallB_cnt, freq_hallA, freq_hallB
     0, 0, 0,                // lastSavedPosition, lastLoopPosition, lastPosChangeTime
-    1.0                     // maxCurrent (A)
+    3.0                     // maxCurrent (A)
   },
   // motor1
   {
@@ -112,7 +112,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
-    1.0
+    3.0
   },
   // motor2
   {
@@ -125,7 +125,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
-    1.0
+    3.0
   },
   // motor3
   {
@@ -138,7 +138,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
-    0.9
+    3.0
   },
   // motor4
   {
@@ -151,7 +151,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
-    0.9
+    3.0
   },
   // motor5
   {
@@ -164,7 +164,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
-    0.9
+    3.0
   },
   // motor6
   {
@@ -177,7 +177,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
-    0.9
+    3.0
   }
 };
 
@@ -188,6 +188,7 @@ uint16_t hc595_state = 0x0000;
 #define CMD_STOP    0x00
 #define CMD_FORWARD 0x01
 #define CMD_REVERSE 0x02
+#define CMD_RESET_POS 0x07
 
 byte cmdBuffer[2];  // 2字节命令缓冲区：[电机号, 动作]
 int cmdIndex = 0;
@@ -515,6 +516,22 @@ void processCommand(byte motorIndex, byte action) {
       Serial.println(" STOP");
       motorStop(motorIndex);
       setPCA9685PWM(motors[motorIndex].pwmChannel, 0);
+      break;
+
+    case CMD_RESET_POS:
+      Serial.print("=> Motor");
+      Serial.print(motorIndex);
+      Serial.println(" RESET POSITION TO 0");
+      noInterrupts();  // 关闭中断
+      motors[motorIndex].position = 0;
+      motors[motorIndex].hallA_count = 0;
+      motors[motorIndex].hallB_count = 0;
+      interrupts();    // 恢复中断
+      savePositionToEEPROM(motorIndex, 0);
+      motors[motorIndex].lastSavedPosition = 0;
+      motors[motorIndex].lastLoopPosition = 0;
+      motors[motorIndex].last_hallA_cnt = 0;
+      motors[motorIndex].last_hallB_cnt = 0;
       break;
 
     default:
