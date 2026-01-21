@@ -189,6 +189,7 @@ uint16_t hc595_state = 0x0000;
 #define CMD_FORWARD 0x01
 #define CMD_REVERSE 0x02
 #define CMD_RESET_POS 0x07
+#define CMD_LEFT_TURN 0x08
 
 byte cmdBuffer[2];  // 2字节命令缓冲区：[电机号, 动作]
 int cmdIndex = 0;
@@ -485,6 +486,138 @@ void ISR_motor6_B() {
 // ================= 指令解析与执行 =================
 
 void processCommand(byte motorIndex, byte action) {
+  // 特殊指令：左翻身 0x08 0x00
+  if (motorIndex == 0x08 && action == 0x00) {
+    Serial.println("=> LEFT TURN: Motor0 reversing to limit...");
+    motorReverse(0);
+    setPCA9685PWM(motors[0].pwmChannel, pctToDuty(SPEED_PERCENT));
+
+    // 等待电机到达极限位置（2秒内位置不变则认为到达极限）
+    unsigned long lastPosChange = millis();
+    int16_t lastPos = motors[0].position;
+
+    while (millis() - lastPosChange < 2000) {
+      delay(50);
+      updateCurrentReading(0);
+      drawOLED();  // 刷新显示
+
+      if (motors[0].position != lastPos) {
+        lastPos = motors[0].position;
+        lastPosChange = millis();
+      }
+    }
+
+    // 停止电机
+    motorStop(0);
+    setPCA9685PWM(motors[0].pwmChannel, 0);
+
+    // 清零位置并保存
+    noInterrupts();
+    motors[0].position = 0;
+    motors[0].hallA_count = 0;
+    motors[0].hallB_count = 0;
+    interrupts();
+    savePositionToEEPROM(0, 0);
+    motors[0].lastSavedPosition = 0;
+    motors[0].lastLoopPosition = 0;
+    motors[0].last_hallA_cnt = 0;
+    motors[0].last_hallB_cnt = 0;
+
+    Serial.println("=> LEFT TURN completed, Motor0 position reset to 0");
+    return;
+  }
+
+  // 特殊指令：右翻身 0x08 0x01
+  if (motorIndex == 0x08 && action == 0x01) {
+    Serial.println("=> RIGHT TURN: Motor0 moving to position 3600...");
+
+    if (motors[0].position < 3600) {
+      motorForward(0);
+      setPCA9685PWM(motors[0].pwmChannel, pctToDuty(SPEED_PERCENT));
+
+      // 等待到达目标位置
+      while (motors[0].position < 3600) {
+        delay(50);
+        updateCurrentReading(0);
+        drawOLED();  // 刷新显示
+      }
+
+      // 停止电机
+      motorStop(0);
+      setPCA9685PWM(motors[0].pwmChannel, 0);
+      Serial.println("=> RIGHT TURN completed, Motor0 reached position 3600");
+    } else {
+      Serial.println("=> Motor0 already at or beyond position 3600");
+    }
+    return;
+  }
+
+  // 特殊指令：平躺 0x08 0x02
+  if (motorIndex == 0x08 && action == 0x02) {
+    Serial.println("=> FLAT: Moving Motor0 and Motor2 to position 2700...");
+
+    // 判断电机0和电机2的运动方向
+    bool motor0_done = (motors[0].position == 2700);
+    bool motor2_done = (motors[2].position == 2700);
+    bool motor0_forward = false;
+    bool motor2_forward = false;
+
+    if (!motor0_done) {
+      if (motors[0].position < 2700) {
+        motorForward(0);
+        motor0_forward = true;
+      } else {
+        motorReverse(0);
+        motor0_forward = false;
+      }
+      setPCA9685PWM(motors[0].pwmChannel, pctToDuty(SPEED_PERCENT));
+    }
+
+    if (!motor2_done) {
+      if (motors[2].position < 2700) {
+        motorForward(2);
+        motor2_forward = true;
+      } else {
+        motorReverse(2);
+        motor2_forward = false;
+      }
+      setPCA9685PWM(motors[2].pwmChannel, pctToDuty(SPEED_PERCENT));
+    }
+
+    // 等待两个电机都到达目标位置
+    while (!motor0_done || !motor2_done) {
+      delay(50);
+      updateCurrentReading(0);
+      updateCurrentReading(2);
+      drawOLED();
+
+      // 检查电机0是否到达
+      if (!motor0_done) {
+        if ((motor0_forward && motors[0].position >= 2600) ||
+            (!motor0_forward && motors[0].position <= 2600)) {
+          motorStop(0);
+          setPCA9685PWM(motors[0].pwmChannel, 0);
+          motor0_done = true;
+          Serial.println("=> Motor0 reached position 2700");
+        }
+      }
+
+      // 检查电机2是否到达
+      if (!motor2_done) {
+        if ((motor2_forward && motors[2].position >= 2700) ||
+            (!motor2_forward && motors[2].position <= 2700)) {
+          motorStop(2);
+          setPCA9685PWM(motors[2].pwmChannel, 0);
+          motor2_done = true;
+          Serial.println("=> Motor2 reached position 2700");
+        }
+      }
+    }
+
+    Serial.println("=> FLAT completed");
+    return;
+  }
+
   // 检查电机编号有效性
   if (motorIndex >= 7) {
     Serial.print("Invalid motor index: ");
