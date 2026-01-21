@@ -395,9 +395,9 @@ void updateCurrentReading(uint8_t motorIndex) {
 void ISR_motor0_A() {
   motors[0].hallA_count++;
   if (digitalRead(motors[0].hallPinA) == digitalRead(motors[0].hallPinB)) {
-    motors[0].position++;
-  } else {
     motors[0].position--;
+  } else {
+    motors[0].position++;
   }
 }
 void ISR_motor0_B() {
@@ -408,9 +408,9 @@ void ISR_motor0_B() {
 void ISR_motor1_A() {
   motors[1].hallA_count++;
   if (digitalRead(motors[1].hallPinA) == digitalRead(motors[1].hallPinB)) {
-    motors[1].position++;
-  } else {
     motors[1].position--;
+  } else {
+    motors[1].position++;
   }
 }
 void ISR_motor1_B() {
@@ -421,9 +421,9 @@ void ISR_motor1_B() {
 void ISR_motor2_A() {
   motors[2].hallA_count++;
   if (digitalRead(motors[2].hallPinA) == digitalRead(motors[2].hallPinB)) {
-    motors[2].position++;
-  } else {
     motors[2].position--;
+  } else {
+    motors[2].position++;
   }
 }
 void ISR_motor2_B() {
