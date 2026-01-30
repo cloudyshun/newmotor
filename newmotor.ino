@@ -531,12 +531,12 @@ void processCommand(byte motorIndex, byte action) {
   if (motorIndex == 0x08 && action == 0x01) {
     Serial.println("=> RIGHT TURN: Motor0 moving to position 3600...");
 
-    if (motors[0].position < 3600) {
+    if (motors[0].position < 3100) {
       motorForward(0);
       setPCA9685PWM(motors[0].pwmChannel, pctToDuty(SPEED_PERCENT));
 
       // 等待到达目标位置
-      while (motors[0].position < 3600) {
+      while (motors[0].position < 3100) {
         delay(50);
         updateCurrentReading(0);
         drawOLED();  // 刷新显示
@@ -545,9 +545,9 @@ void processCommand(byte motorIndex, byte action) {
       // 停止电机
       motorStop(0);
       setPCA9685PWM(motors[0].pwmChannel, 0);
-      Serial.println("=> RIGHT TURN completed, Motor0 reached position 3600");
+      Serial.println("=> RIGHT TURN completed, Motor0 reached position 3100");
     } else {
-      Serial.println("=> Motor0 already at or beyond position 3600");
+      Serial.println("=> Motor0 already at or beyond position 3100");
     }
     return;
   }
@@ -557,13 +557,13 @@ void processCommand(byte motorIndex, byte action) {
     Serial.println("=> FLAT: Moving Motor0 and Motor2 to position 2700...");
 
     // 判断电机0和电机2的运动方向
-    bool motor0_done = (motors[0].position == 2700);
+    bool motor0_done = (motors[0].position == 2100);
     bool motor2_done = (motors[2].position == 2700);
     bool motor0_forward = false;
     bool motor2_forward = false;
 
     if (!motor0_done) {
-      if (motors[0].position < 2700) {
+      if (motors[0].position < 2100) {
         motorForward(0);
         motor0_forward = true;
       } else {
@@ -593,8 +593,8 @@ void processCommand(byte motorIndex, byte action) {
 
       // 检查电机0是否到达
       if (!motor0_done) {
-        if ((motor0_forward && motors[0].position >= 2600) ||
-            (!motor0_forward && motors[0].position <= 2600)) {
+        if ((motor0_forward && motors[0].position >= 2100) ||
+            (!motor0_forward && motors[0].position <= 2100)) {
           motorStop(0);
           setPCA9685PWM(motors[0].pwmChannel, 0);
           motor0_done = true;
