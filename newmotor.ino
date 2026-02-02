@@ -841,6 +841,89 @@ void processCommand(byte motorIndex, byte action) {
     return;
   }
 
+  // 特殊指令：起背+屈腿归零 0x08 0x05
+  if (motorIndex == 0x08 && action == 0x05) {
+    Serial.println("=> RAISE BACK + LEG ZERO: Checking Motor0 position...");
+
+    // 检查电机0位置是否在2000-2200范围内
+    if (motors[0].position < 2000 || motors[0].position > 2200) {
+      Serial.print("=> Motor0 position out of range: ");
+      Serial.print(motors[0].position);
+      Serial.println(" (required: 2000-2200)");
+      Serial.println("=> RAISE BACK + LEG ZERO: Command ignored");
+      return;
+    }
+
+    Serial.print("=> Motor0 position OK (");
+    Serial.print(motors[0].position);
+    Serial.println("), executing RAISE BACK + LEG ZERO...");
+
+    // 启动电机1反转（起背）
+    motorReverse(1);
+    setPCA9685PWM(motors[1].pwmChannel, pctToDuty(SPEED_PERCENT));
+
+    // 启动电机2移动到0
+    bool motor2_done = (motors[2].position == 0);
+    bool motor2_forward = false;
+
+    if (!motor2_done) {
+      if (motors[2].position < 0) {
+        motorForward(2);
+        motor2_forward = true;
+        Serial.println("=> Motor2 moving forward to 0");
+      } else {
+        motorReverse(2);
+        motor2_forward = false;
+        Serial.println("=> Motor2 moving reverse to 0");
+      }
+      setPCA9685PWM(motors[2].pwmChannel, pctToDuty(SPEED_PERCENT));
+    } else {
+      Serial.println("=> Motor2 already at position 0");
+    }
+
+    // 等待电机1到达极限位置（2秒内位置不变则认为到达极限）
+    unsigned long lastPosChange = millis();
+    int16_t lastPos = motors[1].position;
+    bool motor1_done = false;
+
+    // 等待两个电机都到达目标位置
+    while (!motor1_done || !motor2_done) {
+      delay(50);
+      updateCurrentReading(1);
+      updateCurrentReading(2);
+      drawOLED();
+
+      // 检查电机1是否到达极限位置
+      if (!motor1_done) {
+        if (motors[1].position != lastPos) {
+          lastPos = motors[1].position;
+          lastPosChange = millis();
+        }
+
+        if (millis() - lastPosChange >= 2000) {
+          motorStop(1);
+          setPCA9685PWM(motors[1].pwmChannel, 0);
+          motor1_done = true;
+          Serial.println("=> Motor1 reached limit position");
+        }
+      }
+
+      // 检查电机2是否到达目标位置
+      if (!motor2_done) {
+        if ((motor2_forward && motors[2].position >= 0) ||
+            (!motor2_forward && motors[2].position <= 0)) {
+          motorStop(2);
+          setPCA9685PWM(motors[2].pwmChannel, 0);
+          motor2_done = true;
+          Serial.println("=> Motor2 reached position 0");
+        }
+      }
+    }
+
+    Serial.println("=> RAISE BACK + LEG ZERO completed");
+    return;
+  }
+
   // 检查电机编号有效性
   if (motorIndex >= 7) {
     Serial.print("Invalid motor index: ");
