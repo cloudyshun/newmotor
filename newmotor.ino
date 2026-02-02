@@ -494,7 +494,21 @@ void ISR_motor6_B() {
 void processCommand(byte motorIndex, byte action) {
   // 特殊指令：左翻身 0x08 0x00
   if (motorIndex == 0x08 && action == 0x00) {
-    Serial.println("=> LEFT TURN: Motor0 reversing to limit...");
+    Serial.println("=> LEFT TURN: Checking Motor1 position...");
+
+    // 检查电机1位置是否在3250-3450范围内
+    if (motors[1].position < 3250 || motors[1].position > 3450) {
+      Serial.print("=> Motor1 position out of range: ");
+      Serial.print(motors[1].position);
+      Serial.println(" (required: 3250-3450)");
+      Serial.println("=> LEFT TURN: Command ignored");
+      return;
+    }
+
+    Serial.print("=> Motor1 position OK (");
+    Serial.print(motors[1].position);
+    Serial.println("), executing LEFT TURN...");
+
     motorReverse(0);
     setPCA9685PWM(motors[0].pwmChannel, pctToDuty(SPEED_PERCENT));
 
@@ -535,7 +549,20 @@ void processCommand(byte motorIndex, byte action) {
 
   // 特殊指令：右翻身 0x08 0x01
   if (motorIndex == 0x08 && action == 0x01) {
-    Serial.println("=> RIGHT TURN: Motor0 moving to position 3600...");
+    Serial.println("=> RIGHT TURN: Checking Motor1 position...");
+
+    // 检查电机1位置是否在3250-3450范围内
+    if (motors[1].position < 3250 || motors[1].position > 3450) {
+      Serial.print("=> Motor1 position out of range: ");
+      Serial.print(motors[1].position);
+      Serial.println(" (required: 3250-3450)");
+      Serial.println("=> RIGHT TURN: Command ignored");
+      return;
+    }
+
+    Serial.print("=> Motor1 position OK (");
+    Serial.print(motors[1].position);
+    Serial.println("), executing RIGHT TURN...");
 
     if (motors[0].position < 3100) {
       motorForward(0);
