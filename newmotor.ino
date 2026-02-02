@@ -587,56 +587,35 @@ void processCommand(byte motorIndex, byte action) {
 
   // 特殊指令：平躺 0x08 0x02
   if (motorIndex == 0x08 && action == 0x02) {
-    Serial.println("=> FLAT: Moving Motor0 and Motor2 to position 2700...");
+    Serial.println("=> FLAT: Checking bed state...");
 
-    // 判断电机0和电机2的运动方向
-    bool motor0_done = (motors[0].position == 2100);
-    bool motor2_done = (motors[2].position == 2700);
-    bool motor0_forward = false;
-    bool motor2_forward = false;
+    bool motor0_in_range = (motors[0].position >= 2000 && motors[0].position <= 2200);
+    bool motor1_in_range = (motors[1].position >= 3250 && motors[1].position <= 3450);
 
-    if (!motor0_done) {
-      if (motors[0].position < 2100) {
-        motorForward(0);
-        motor0_forward = true;
-      } else {
-        motorReverse(0);
-        motor0_forward = false;
-      }
-      setPCA9685PWM(motors[0].pwmChannel, pctToDuty(SPEED_PERCENT));
-    }
+    // 情况1：两个条件都满足 - 只需要移动电机2
+    if (motor0_in_range && motor1_in_range) {
+      Serial.println("=> State: Both turn and raise are homed, only moving Motor2...");
 
-    if (!motor2_done) {
-      if (motors[2].position < 2700) {
-        motorForward(2);
-        motor2_forward = true;
-      } else {
-        motorReverse(2);
-        motor2_forward = false;
-      }
-      setPCA9685PWM(motors[2].pwmChannel, pctToDuty(SPEED_PERCENT));
-    }
+      bool motor2_done = (motors[2].position == 2700);
+      bool motor2_forward = false;
 
-    // 等待两个电机都到达目标位置
-    while (!motor0_done || !motor2_done) {
-      delay(50);
-      updateCurrentReading(0);
-      updateCurrentReading(2);
-      drawOLED();
-
-      // 检查电机0是否到达
-      if (!motor0_done) {
-        if ((motor0_forward && motors[0].position >= 2100) ||
-            (!motor0_forward && motors[0].position <= 2100)) {
-          motorStop(0);
-          setPCA9685PWM(motors[0].pwmChannel, 0);
-          motor0_done = true;
-          Serial.println("=> Motor0 reached position 2700");
-        }
-      }
-
-      // 检查电机2是否到达
       if (!motor2_done) {
+        if (motors[2].position < 2700) {
+          motorForward(2);
+          motor2_forward = true;
+        } else {
+          motorReverse(2);
+          motor2_forward = false;
+        }
+        setPCA9685PWM(motors[2].pwmChannel, pctToDuty(SPEED_PERCENT));
+      }
+
+      // 等待电机2到达目标位置
+      while (!motor2_done) {
+        delay(50);
+        updateCurrentReading(2);
+        drawOLED();
+
         if ((motor2_forward && motors[2].position >= 2700) ||
             (!motor2_forward && motors[2].position <= 2700)) {
           motorStop(2);
@@ -645,9 +624,151 @@ void processCommand(byte motorIndex, byte action) {
           Serial.println("=> Motor2 reached position 2700");
         }
       }
+
+      Serial.println("=> FLAT completed");
+      return;
     }
 
-    Serial.println("=> FLAT completed");
+    // 情况2：状态1 - 翻身后归位（电机1在范围内）
+    if (motor1_in_range) {
+      Serial.println("=> State 1: After turn, moving Motor0 and Motor2...");
+
+      bool motor0_done = (motors[0].position == 2100);
+      bool motor2_done = (motors[2].position == 2700);
+      bool motor0_forward = false;
+      bool motor2_forward = false;
+
+      if (!motor0_done) {
+        if (motors[0].position < 2100) {
+          motorForward(0);
+          motor0_forward = true;
+        } else {
+          motorReverse(0);
+          motor0_forward = false;
+        }
+        setPCA9685PWM(motors[0].pwmChannel, pctToDuty(SPEED_PERCENT));
+      }
+
+      if (!motor2_done) {
+        if (motors[2].position < 2700) {
+          motorForward(2);
+          motor2_forward = true;
+        } else {
+          motorReverse(2);
+          motor2_forward = false;
+        }
+        setPCA9685PWM(motors[2].pwmChannel, pctToDuty(SPEED_PERCENT));
+      }
+
+      // 等待两个电机都到达目标位置
+      while (!motor0_done || !motor2_done) {
+        delay(50);
+        updateCurrentReading(0);
+        updateCurrentReading(2);
+        drawOLED();
+
+        // 检查电机0是否到达
+        if (!motor0_done) {
+          if ((motor0_forward && motors[0].position >= 2100) ||
+              (!motor0_forward && motors[0].position <= 2100)) {
+            motorStop(0);
+            setPCA9685PWM(motors[0].pwmChannel, 0);
+            motor0_done = true;
+            Serial.println("=> Motor0 reached position 2100");
+          }
+        }
+
+        // 检查电机2是否到达
+        if (!motor2_done) {
+          if ((motor2_forward && motors[2].position >= 2700) ||
+              (!motor2_forward && motors[2].position <= 2700)) {
+            motorStop(2);
+            setPCA9685PWM(motors[2].pwmChannel, 0);
+            motor2_done = true;
+            Serial.println("=> Motor2 reached position 2700");
+          }
+        }
+      }
+
+      Serial.println("=> FLAT completed");
+      return;
+    }
+
+    // 情况3：状态2 - 起背后归位（电机0在范围内）
+    if (motor0_in_range) {
+      Serial.println("=> State 2: After raise, moving Motor1 to limit and Motor2...");
+
+      // 启动电机1前进到极限位置
+      motorForward(1);
+      setPCA9685PWM(motors[1].pwmChannel, pctToDuty(SPEED_PERCENT));
+
+      // 启动电机2移动到2700
+      bool motor2_done = (motors[2].position == 2700);
+      bool motor2_forward = false;
+
+      if (!motor2_done) {
+        if (motors[2].position < 2700) {
+          motorForward(2);
+          motor2_forward = true;
+        } else {
+          motorReverse(2);
+          motor2_forward = false;
+        }
+        setPCA9685PWM(motors[2].pwmChannel, pctToDuty(SPEED_PERCENT));
+      }
+
+      // 等待电机1到达极限位置（2秒内位置不变则认为到达极限）
+      unsigned long lastPosChange = millis();
+      int16_t lastPos = motors[1].position;
+      bool motor1_done = false;
+
+      // 等待两个电机都到达目标位置
+      while (!motor1_done || !motor2_done) {
+        delay(50);
+        updateCurrentReading(1);
+        updateCurrentReading(2);
+        drawOLED();
+
+        // 检查电机1是否到达极限位置
+        if (!motor1_done) {
+          if (motors[1].position != lastPos) {
+            lastPos = motors[1].position;
+            lastPosChange = millis();
+          }
+
+          if (millis() - lastPosChange >= 2000) {
+            motorStop(1);
+            setPCA9685PWM(motors[1].pwmChannel, 0);
+            motor1_done = true;
+            Serial.println("=> Motor1 reached limit position");
+          }
+        }
+
+        // 检查电机2是否到达目标位置
+        if (!motor2_done) {
+          if ((motor2_forward && motors[2].position >= 2700) ||
+              (!motor2_forward && motors[2].position <= 2700)) {
+            motorStop(2);
+            setPCA9685PWM(motors[2].pwmChannel, 0);
+            motor2_done = true;
+            Serial.println("=> Motor2 reached position 2700");
+          }
+        }
+      }
+
+      Serial.println("=> FLAT completed");
+      return;
+    }
+
+    // 情况4：两个条件都不满足 - 拒绝执行
+    Serial.println("=> ERROR: Bed state invalid for FLAT command");
+    Serial.print("=> Motor0 position: ");
+    Serial.print(motors[0].position);
+    Serial.println(" (required: 2000-2200 for State 2)");
+    Serial.print("=> Motor1 position: ");
+    Serial.print(motors[1].position);
+    Serial.println(" (required: 3250-3450 for State 1)");
+    Serial.println("=> FLAT command ignored");
     return;
   }
 
