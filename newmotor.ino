@@ -363,10 +363,16 @@ void updateCurrentReading(uint8_t motorIndex) {
 
   // 1. 切换到该电机的ADC通道
   select4051Channel(motors[motorIndex].adcChannel);
-  delayMicroseconds(10); // 等待多路复用器稳定
+  delayMicroseconds(50); // 增加延迟，等待多路复用器稳定
 
-  // 2. 读取一次 ADC
-  int adc_value = analogRead(PIN_ADC_CURRENT);
+  // 2. 读取多次ADC并取平均（减少噪声）
+  int adc_sum = 0;
+  for (int i = 0; i < 3; i++) {
+    adc_sum += analogRead(PIN_ADC_CURRENT);
+    delayMicroseconds(10);
+  }
+  int adc_value = adc_sum / 3;
+
   float voltage = (adc_value / 4095.0) * 3.3;
   float new_amp = voltage / SHUNT_RESISTANCE;
 
@@ -618,6 +624,29 @@ void processCommand(byte motorIndex, byte action) {
     return;
   }
 
+  // 特殊指令：起背 0x08 0x03
+  if (motorIndex == 0x08 && action == 0x03) {
+    Serial.println("=> RAISE BACK: Checking Motor0 position...");
+
+    // 检查电机0位置是否在2000-2200范围内
+    if (motors[0].position >= 2000 && motors[0].position <= 2200) {
+      Serial.print("=> Motor0 position OK (");
+      Serial.print(motors[0].position);
+      Serial.println("), Motor1 reversing...");
+
+      motorReverse(1);
+      setPCA9685PWM(motors[1].pwmChannel, pctToDuty(SPEED_PERCENT));
+
+      Serial.println("=> RAISE BACK: Motor1 reversing (non-blocking)");
+    } else {
+      Serial.print("=> Motor0 position out of range: ");
+      Serial.print(motors[0].position);
+      Serial.println(" (required: 2000-2200)");
+      Serial.println("=> RAISE BACK: Command ignored");
+    }
+    return;
+  }
+
   // 检查电机编号有效性
   if (motorIndex >= 7) {
     Serial.print("Invalid motor index: ");
@@ -706,10 +735,15 @@ void drawOLED() {
     display.print(i);
     display.print(":");
 
-    // 位置（6字符宽度）
+    // 位置（6字符宽度）- 原子读取
+    int16_t pos;
+    noInterrupts();
+    pos = motors[i].position;
+    interrupts();
+
     display.setCursor(18, i * 9);
-    if (motors[i].position >= 0) display.print(" ");
-    display.print(motors[i].position);
+    if (pos >= 0) display.print(" ");
+    display.print(pos);
 
     // 电流（6字符宽度）
     display.setCursor(60, i * 9);
@@ -717,7 +751,7 @@ void drawOLED() {
     display.print("A");
 
     // 保存状态
-    if (motors[i].position == motors[i].lastSavedPosition) {
+    if (pos == motors[i].lastSavedPosition) {
       display.setCursor(110, i * 9);
       display.print("S");
     }
