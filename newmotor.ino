@@ -795,6 +795,52 @@ void processCommand(byte motorIndex, byte action) {
     return;
   }
 
+  // 特殊指令：抬腿 0x08 0x04
+  if (motorIndex == 0x08 && action == 0x04) {
+    Serial.println("=> RAISE LEG: Moving Motor2 to position 3200...");
+
+    // 检查是否已在目标范围内
+    if (motors[2].position >= 3100 && motors[2].position <= 3300) {
+      Serial.print("=> Motor2 already in target range: ");
+      Serial.println(motors[2].position);
+      Serial.println("=> RAISE LEG completed");
+      return;
+    }
+
+    bool motor2_done = false;
+    bool motor2_forward = false;
+
+    if (motors[2].position < 3100) {
+      motorForward(2);
+      motor2_forward = true;
+      Serial.println("=> Motor2 moving forward to 3200");
+    } else {
+      motorReverse(2);
+      motor2_forward = false;
+      Serial.println("=> Motor2 moving reverse to 3200");
+    }
+    setPCA9685PWM(motors[2].pwmChannel, pctToDuty(SPEED_PERCENT));
+
+    // 等待电机2到达目标范围
+    while (!motor2_done) {
+      delay(50);
+      updateCurrentReading(2);
+      drawOLED();
+
+      if ((motor2_forward && motors[2].position >= 3200) ||
+          (!motor2_forward && motors[2].position <= 3200)) {
+        motorStop(2);
+        setPCA9685PWM(motors[2].pwmChannel, 0);
+        motor2_done = true;
+        Serial.print("=> Motor2 reached position: ");
+        Serial.println(motors[2].position);
+      }
+    }
+
+    Serial.println("=> RAISE LEG completed");
+    return;
+  }
+
   // 检查电机编号有效性
   if (motorIndex >= 7) {
     Serial.print("Invalid motor index: ");
