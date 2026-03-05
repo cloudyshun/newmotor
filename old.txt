@@ -191,59 +191,7 @@ uint16_t hc595_state = 0x0000;
 #define CMD_RESET_POS 0x07
 #define CMD_LEFT_TURN 0x08
 
-// ---- 8字节指令集定义 ----
-// 电机0指令
-const byte cmdMotor0Stop[8]    = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x10, 0x00};
-const byte cmdMotor0Forward[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x10, 0x01};
-const byte cmdMotor0Reverse[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x10, 0x02};
-const byte cmdResetMotor0[8]   = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x11, 0x07};
-
-// 电机1指令
-const byte cmdMotor1Stop[8]    = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x11, 0x00};
-const byte cmdMotor1Forward[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x11, 0x01};
-const byte cmdMotor1Reverse[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x11, 0x02};
-const byte cmdResetMotor1[8]   = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x11, 0x17};
-
-// 电机2指令
-const byte cmdMotor2Stop[8]    = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x12, 0x00};
-const byte cmdMotor2Forward[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x12, 0x01};
-const byte cmdMotor2Reverse[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x12, 0x02};
-const byte cmdResetMotor2[8]   = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x11, 0x27};
-
-// 电机3指令
-const byte cmdMotor3Stop[8]    = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x13, 0x00};
-const byte cmdMotor3Forward[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x13, 0x01};
-const byte cmdMotor3Reverse[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x13, 0x02};
-const byte cmdResetMotor3[8]   = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x11, 0x37};
-
-// 电机4指令
-const byte cmdMotor4Stop[8]    = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x14, 0x00};
-const byte cmdMotor4Forward[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x14, 0x01};
-const byte cmdMotor4Reverse[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x14, 0x02};
-const byte cmdResetMotor4[8]   = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x11, 0x47};
-
-// 电机5指令
-const byte cmdMotor5Stop[8]    = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x15, 0x00};
-const byte cmdMotor5Forward[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x15, 0x01};
-const byte cmdMotor5Reverse[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x15, 0x02};
-const byte cmdResetMotor5[8]   = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x11, 0x57};
-
-// 电机6指令
-const byte cmdMotor6Stop[8]    = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x16, 0x00};
-const byte cmdMotor6Forward[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x16, 0x01};
-const byte cmdMotor6Reverse[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x16, 0x02};
-const byte cmdResetMotor6[8]   = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x11, 0x67};
-
-// 复合动作指令
-const byte cmdLeftTurn[8]   = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x10};
-const byte cmdRightTurn[8]  = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x11};
-const byte cmdFlat[8]       = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x12};
-const byte cmdRaiseBack[8]  = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x13};
-const byte cmdRaiseLeg[8]   = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x14};
-const byte cmdSit[8]        = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x15};
-const byte cmdToilet[8]     = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x16};
-
-byte cmdBuffer[8];  // 8字节命令缓冲区
+byte cmdBuffer[2];  // 2字节命令缓冲区：[电机号, 动作]
 int cmdIndex = 0;
 
 // ---- 外设对象 ----
@@ -543,252 +491,9 @@ void ISR_motor6_B() {
 
 // ================= 指令解析与执行 =================
 
-void processCommand(byte cmd[8]) {
-  // 检查帧头
-  if (cmd[0] != 0xEE) return;
-
-  // ---- 电机0指令 ----
-  if (memcmp(cmd, cmdMotor0Stop, 8) == 0) {
-    Serial.println("=> Motor0 STOP");
-    motorStop(0);
-    setPCA9685PWM(motors[0].pwmChannel, 0);
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor0Forward, 8) == 0) {
-    Serial.println("=> Motor0 FORWARD");
-    motorForward(0);
-    setPCA9685PWM(motors[0].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor0Reverse, 8) == 0) {
-    Serial.println("=> Motor0 REVERSE");
-    motorReverse(0);
-    setPCA9685PWM(motors[0].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdResetMotor0, 8) == 0) {
-    Serial.println("=> Motor0 RESET POSITION TO 0");
-    noInterrupts();
-    motors[0].position = 0;
-    motors[0].hallA_count = 0;
-    motors[0].hallB_count = 0;
-    interrupts();
-    savePositionToEEPROM(0, 0);
-    motors[0].lastSavedPosition = 0;
-    motors[0].lastLoopPosition = 0;
-    motors[0].last_hallA_cnt = 0;
-    motors[0].last_hallB_cnt = 0;
-    return;
-  }
-
-  // ---- 电机1指令 ----
-  else if (memcmp(cmd, cmdMotor1Stop, 8) == 0) {
-    Serial.println("=> Motor1 STOP");
-    motorStop(1);
-    setPCA9685PWM(motors[1].pwmChannel, 0);
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor1Forward, 8) == 0) {
-    Serial.println("=> Motor1 FORWARD");
-    motorForward(1);
-    setPCA9685PWM(motors[1].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor1Reverse, 8) == 0) {
-    Serial.println("=> Motor1 REVERSE");
-    motorReverse(1);
-    setPCA9685PWM(motors[1].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdResetMotor1, 8) == 0) {
-    Serial.println("=> Motor1 RESET POSITION TO 0");
-    noInterrupts();
-    motors[1].position = 0;
-    motors[1].hallA_count = 0;
-    motors[1].hallB_count = 0;
-    interrupts();
-    savePositionToEEPROM(1, 0);
-    motors[1].lastSavedPosition = 0;
-    motors[1].lastLoopPosition = 0;
-    motors[1].last_hallA_cnt = 0;
-    motors[1].last_hallB_cnt = 0;
-    return;
-  }
-
-  // ---- 电机2指令 ----
-  else if (memcmp(cmd, cmdMotor2Stop, 8) == 0) {
-    Serial.println("=> Motor2 STOP");
-    motorStop(2);
-    setPCA9685PWM(motors[2].pwmChannel, 0);
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor2Forward, 8) == 0) {
-    Serial.println("=> Motor2 FORWARD");
-    motorForward(2);
-    setPCA9685PWM(motors[2].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor2Reverse, 8) == 0) {
-    Serial.println("=> Motor2 REVERSE");
-    motorReverse(2);
-    setPCA9685PWM(motors[2].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdResetMotor2, 8) == 0) {
-    Serial.println("=> Motor2 RESET POSITION TO 0");
-    noInterrupts();
-    motors[2].position = 0;
-    motors[2].hallA_count = 0;
-    motors[2].hallB_count = 0;
-    interrupts();
-    savePositionToEEPROM(2, 0);
-    motors[2].lastSavedPosition = 0;
-    motors[2].lastLoopPosition = 0;
-    motors[2].last_hallA_cnt = 0;
-    motors[2].last_hallB_cnt = 0;
-    return;
-  }
-
-  // ---- 电机3指令 ----
-  else if (memcmp(cmd, cmdMotor3Stop, 8) == 0) {
-    Serial.println("=> Motor3 STOP");
-    motorStop(3);
-    setPCA9685PWM(motors[3].pwmChannel, 0);
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor3Forward, 8) == 0) {
-    Serial.println("=> Motor3 FORWARD");
-    motorForward(3);
-    setPCA9685PWM(motors[3].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor3Reverse, 8) == 0) {
-    Serial.println("=> Motor3 REVERSE");
-    motorReverse(3);
-    setPCA9685PWM(motors[3].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdResetMotor3, 8) == 0) {
-    Serial.println("=> Motor3 RESET POSITION TO 0");
-    noInterrupts();
-    motors[3].position = 0;
-    motors[3].hallA_count = 0;
-    motors[3].hallB_count = 0;
-    interrupts();
-    savePositionToEEPROM(3, 0);
-    motors[3].lastSavedPosition = 0;
-    motors[3].lastLoopPosition = 0;
-    motors[3].last_hallA_cnt = 0;
-    motors[3].last_hallB_cnt = 0;
-    return;
-  }
-
-  // ---- 电机4指令 ----
-  else if (memcmp(cmd, cmdMotor4Stop, 8) == 0) {
-    Serial.println("=> Motor4 STOP");
-    motorStop(4);
-    setPCA9685PWM(motors[4].pwmChannel, 0);
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor4Forward, 8) == 0) {
-    Serial.println("=> Motor4 FORWARD");
-    motorForward(4);
-    setPCA9685PWM(motors[4].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor4Reverse, 8) == 0) {
-    Serial.println("=> Motor4 REVERSE");
-    motorReverse(4);
-    setPCA9685PWM(motors[4].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdResetMotor4, 8) == 0) {
-    Serial.println("=> Motor4 RESET POSITION TO 0");
-    noInterrupts();
-    motors[4].position = 0;
-    motors[4].hallA_count = 0;
-    motors[4].hallB_count = 0;
-    interrupts();
-    savePositionToEEPROM(4, 0);
-    motors[4].lastSavedPosition = 0;
-    motors[4].lastLoopPosition = 0;
-    motors[4].last_hallA_cnt = 0;
-    motors[4].last_hallB_cnt = 0;
-    return;
-  }
-
-  // ---- 电机5指令 ----
-  else if (memcmp(cmd, cmdMotor5Stop, 8) == 0) {
-    Serial.println("=> Motor5 STOP");
-    motorStop(5);
-    setPCA9685PWM(motors[5].pwmChannel, 0);
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor5Forward, 8) == 0) {
-    Serial.println("=> Motor5 FORWARD");
-    motorForward(5);
-    setPCA9685PWM(motors[5].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor5Reverse, 8) == 0) {
-    Serial.println("=> Motor5 REVERSE");
-    motorReverse(5);
-    setPCA9685PWM(motors[5].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdResetMotor5, 8) == 0) {
-    Serial.println("=> Motor5 RESET POSITION TO 0");
-    noInterrupts();
-    motors[5].position = 0;
-    motors[5].hallA_count = 0;
-    motors[5].hallB_count = 0;
-    interrupts();
-    savePositionToEEPROM(5, 0);
-    motors[5].lastSavedPosition = 0;
-    motors[5].lastLoopPosition = 0;
-    motors[5].last_hallA_cnt = 0;
-    motors[5].last_hallB_cnt = 0;
-    return;
-  }
-
-  // ---- 电机6指令 ----
-  else if (memcmp(cmd, cmdMotor6Stop, 8) == 0) {
-    Serial.println("=> Motor6 STOP");
-    motorStop(6);
-    setPCA9685PWM(motors[6].pwmChannel, 0);
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor6Forward, 8) == 0) {
-    Serial.println("=> Motor6 FORWARD");
-    motorForward(6);
-    setPCA9685PWM(motors[6].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdMotor6Reverse, 8) == 0) {
-    Serial.println("=> Motor6 REVERSE");
-    motorReverse(6);
-    setPCA9685PWM(motors[6].pwmChannel, pctToDuty(SPEED_PERCENT));
-    return;
-  }
-  else if (memcmp(cmd, cmdResetMotor6, 8) == 0) {
-    Serial.println("=> Motor6 RESET POSITION TO 0");
-    noInterrupts();
-    motors[6].position = 0;
-    motors[6].hallA_count = 0;
-    motors[6].hallB_count = 0;
-    interrupts();
-    savePositionToEEPROM(6, 0);
-    motors[6].lastSavedPosition = 0;
-    motors[6].lastLoopPosition = 0;
-    motors[6].last_hallA_cnt = 0;
-    motors[6].last_hallB_cnt = 0;
-    return;
-  }
-
-  // ---- 复合动作指令 ----
-
-  // 左翻身
-  else if (memcmp(cmd, cmdLeftTurn, 8) == 0) {
+void processCommand(byte motorIndex, byte action) {
+  // 特殊指令：左翻身 0x08 0x00
+  if (motorIndex == 0x08 && action == 0x00) {
     Serial.println("=> LEFT TURN: Checking Motor1 position...");
 
     // 检查电机1位置是否在3250-3450范围内
@@ -842,8 +547,8 @@ void processCommand(byte cmd[8]) {
     return;
   }
 
-  // 右翻身
-  else if (memcmp(cmd, cmdRightTurn, 8) == 0) {
+  // 特殊指令：右翻身 0x08 0x01
+  if (motorIndex == 0x08 && action == 0x01) {
     Serial.println("=> RIGHT TURN: Checking Motor1 position...");
 
     // 检查电机1位置是否在3250-3450范围内
@@ -880,8 +585,8 @@ void processCommand(byte cmd[8]) {
     return;
   }
 
-  // 平躺
-  else if (memcmp(cmd, cmdFlat, 8) == 0) {
+  // 特殊指令：平躺 0x08 0x02
+  if (motorIndex == 0x08 && action == 0x02) {
     Serial.println("=> FLAT: Checking bed state...");
 
     bool motor0_in_range = (motors[0].position >= 2000 && motors[0].position <= 2200);
@@ -1067,8 +772,8 @@ void processCommand(byte cmd[8]) {
     return;
   }
 
-  // 起背
-  else if (memcmp(cmd, cmdRaiseBack, 8) == 0) {
+  // 特殊指令：起背 0x08 0x03
+  if (motorIndex == 0x08 && action == 0x03) {
     Serial.println("=> RAISE BACK: Checking Motor0 position...");
 
     // 检查电机0位置是否在2000-2200范围内
@@ -1090,8 +795,8 @@ void processCommand(byte cmd[8]) {
     return;
   }
 
-  // 抬腿
-  else if (memcmp(cmd, cmdRaiseLeg, 8) == 0) {
+  // 特殊指令：抬腿 0x08 0x04
+  if (motorIndex == 0x08 && action == 0x04) {
     Serial.println("=> RAISE LEG: Moving Motor2 to position 3200...");
 
     // 检查是否已在目标范围内
@@ -1136,8 +841,8 @@ void processCommand(byte cmd[8]) {
     return;
   }
 
-  // 坐立（起背+屈腿归零）
-  else if (memcmp(cmd, cmdSit, 8) == 0) {
+  // 特殊指令：起背+屈腿归零 0x08 0x05
+  if (motorIndex == 0x08 && action == 0x05) {
     Serial.println("=> RAISE BACK + LEG ZERO: Checking Motor0 position...");
 
     // 检查电机0位置是否在2000-2200范围内
@@ -1219,48 +924,77 @@ void processCommand(byte cmd[8]) {
     return;
   }
 
-  // 如厕（新增指令，需要定义具体逻辑）
-  else if (memcmp(cmd, cmdToilet, 8) == 0) {
-    Serial.println("=> TOILET: Command received");
-    // TODO: 添加如厕动作的具体逻辑
-    Serial.println("=> TOILET: Not implemented yet");
+  // 检查电机编号有效性
+  if (motorIndex >= 7) {
+    Serial.print("Invalid motor index: ");
+    Serial.println(motorIndex);
     return;
   }
 
-  // 未知指令
-  Serial.println("=> Unknown command");
+  // 执行对应动作
+  switch (action) {
+    case CMD_FORWARD:
+      Serial.print("=> Motor");
+      Serial.print(motorIndex);
+      Serial.println(" FORWARD");
+      motorForward(motorIndex);
+      setPCA9685PWM(motors[motorIndex].pwmChannel, pctToDuty(SPEED_PERCENT));
+      break;
+
+    case CMD_REVERSE:
+      Serial.print("=> Motor");
+      Serial.print(motorIndex);
+      Serial.println(" REVERSE");
+      motorReverse(motorIndex);
+      setPCA9685PWM(motors[motorIndex].pwmChannel, pctToDuty(SPEED_PERCENT));
+      break;
+
+    case CMD_STOP:
+      Serial.print("=> Motor");
+      Serial.print(motorIndex);
+      Serial.println(" STOP");
+      motorStop(motorIndex);
+      setPCA9685PWM(motors[motorIndex].pwmChannel, 0);
+      break;
+
+    case CMD_RESET_POS:
+      Serial.print("=> Motor");
+      Serial.print(motorIndex);
+      Serial.println(" RESET POSITION TO 0");
+      noInterrupts();  // 关闭中断
+      motors[motorIndex].position = 0;
+      motors[motorIndex].hallA_count = 0;
+      motors[motorIndex].hallB_count = 0;
+      interrupts();    // 恢复中断
+      savePositionToEEPROM(motorIndex, 0);
+      motors[motorIndex].lastSavedPosition = 0;
+      motors[motorIndex].lastLoopPosition = 0;
+      motors[motorIndex].last_hallA_cnt = 0;
+      motors[motorIndex].last_hallB_cnt = 0;
+      break;
+
+    default:
+      Serial.print("Invalid action: ");
+      Serial.println(action);
+      break;
+  }
 }
 
 void handleScreenCommands() {
   while (SERIAL_SCREEN.available()) {
     byte receivedByte = SERIAL_SCREEN.read();
 
-    // 检测帧头 0xEE
-    if (receivedByte == 0xEE) {
-      cmdBuffer[0] = receivedByte;
-      cmdIndex = 1;
-      unsigned long startTime = millis();
+    cmdBuffer[cmdIndex++] = receivedByte;
 
-      // 读取剩余7字节，带20ms超时保护
-      while (cmdIndex < 8) {
-        if (SERIAL_SCREEN.available()) {
-          cmdBuffer[cmdIndex++] = SERIAL_SCREEN.read();
-        }
-        if (millis() - startTime > 20) {
-          cmdIndex = 0;
-          return;
-        }
-      }
+    // 收到2字节后处理命令
+    if (cmdIndex >= 2) {
+      processCommand(cmdBuffer[0], cmdBuffer[1]);
 
-      // 收到完整8字节后处理
-      if (cmdIndex == 8) {
-        processCommand(cmdBuffer);
+      // 回传命令确认
+      SERIAL_SCREEN.write(cmdBuffer, 2);
+      SERIAL_SCREEN.flush();
 
-        // 回传命令确认
-        SERIAL_SCREEN.write(cmdBuffer, 8);
-        SERIAL_SCREEN.flush();
-      }
-      cmdIndex = 0;
+      cmdIndex = 0;  // 重置索引
     }
   }
 }
