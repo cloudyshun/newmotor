@@ -544,13 +544,13 @@ void ISR_motor3_AB() {
       (lastState == 0b01 && currentState == 0b11) ||
       (lastState == 0b11 && currentState == 0b10) ||
       (lastState == 0b10 && currentState == 0b00)) {
-    motors[3].position++;  // 注意：motor3-6方向与0-2相反
+    motors[3].position++;  // 方向已反转：伸出递增
   }
   else if ((lastState == 0b00 && currentState == 0b10) ||
            (lastState == 0b10 && currentState == 0b11) ||
            (lastState == 0b11 && currentState == 0b01) ||
            (lastState == 0b01 && currentState == 0b00)) {
-    motors[3].position--;
+    motors[3].position--;  // 方向已反转：缩回递减
   }
 
   motors[3].lastState = currentState;
@@ -883,11 +883,11 @@ void processCommand(byte cmd[8]) {
   else if (memcmp(cmd, cmdLeftTurn, 8) == 0) {
     Serial.println("=> LEFT TURN: Checking Motor1 position...");
 
-    // 检查电机1位置是否在3250-3450范围内
-    if (motors[1].position < 3250 || motors[1].position > 3450) {
+    // 检查电机1位置是否在6500-6900范围内
+    if (motors[1].position < 6500 || motors[1].position > 6900) {
       Serial.print("=> Motor1 position out of range: ");
       Serial.print(motors[1].position);
-      Serial.println(" (required: 3250-3450)");
+      Serial.println(" (required: 6500-6900)");
       Serial.println("=> LEFT TURN: Command ignored");
       return;
     }
@@ -938,11 +938,11 @@ void processCommand(byte cmd[8]) {
   else if (memcmp(cmd, cmdRightTurn, 8) == 0) {
     Serial.println("=> RIGHT TURN: Checking Motor1 position...");
 
-    // 检查电机1位置是否在3250-3450范围内
-    if (motors[1].position < 3250 || motors[1].position > 3450) {
+    // 检查电机1位置是否在6500-6900范围内
+    if (motors[1].position < 6500 || motors[1].position > 6900) {
       Serial.print("=> Motor1 position out of range: ");
       Serial.print(motors[1].position);
-      Serial.println(" (required: 3250-3450)");
+      Serial.println(" (required: 6500-6900)");
       Serial.println("=> RIGHT TURN: Command ignored");
       return;
     }
@@ -951,12 +951,12 @@ void processCommand(byte cmd[8]) {
     Serial.print(motors[1].position);
     Serial.println("), executing RIGHT TURN...");
 
-    if (motors[0].position < 3100) {
+    if (motors[0].position < 6400) {
       motorForward(0);
       setPCA9685PWM(motors[0].pwmChannel, pctToDuty(SPEED_PERCENT));
 
       // 等待到达目标位置
-      while (motors[0].position < 3100) {
+      while (motors[0].position < 6400) {
         delay(50);
         updateCurrentReading(0);
         drawOLED();  // 刷新显示
@@ -965,9 +965,9 @@ void processCommand(byte cmd[8]) {
       // 停止电机
       motorStop(0);
       setPCA9685PWM(motors[0].pwmChannel, 0);
-      Serial.println("=> RIGHT TURN completed, Motor0 reached position 3100");
+      Serial.println("=> RIGHT TURN completed, Motor0 reached position 6400");
     } else {
-      Serial.println("=> Motor0 already at or beyond position 3100");
+      Serial.println("=> Motor0 already at or beyond position 6400");
     }
     return;
   }
@@ -976,18 +976,18 @@ void processCommand(byte cmd[8]) {
   else if (memcmp(cmd, cmdFlat, 8) == 0) {
     Serial.println("=> FLAT: Checking bed state...");
 
-    bool motor0_in_range = (motors[0].position >= 2000 && motors[0].position <= 2200);
-    bool motor1_in_range = (motors[1].position >= 3250 && motors[1].position <= 3450);
+    bool motor0_in_range = (motors[0].position >= 4200 && motors[0].position <= 4800);
+    bool motor1_in_range = (motors[1].position >= 6500 && motors[1].position <= 6900);
 
     // 情况1：两个条件都满足 - 只需要移动电机2
     if (motor0_in_range && motor1_in_range) {
       Serial.println("=> State: Both turn and raise are homed, only moving Motor2...");
 
-      bool motor2_done = (motors[2].position == 2700);
+      bool motor2_done = (motors[2].position == 5000);
       bool motor2_forward = false;
 
       if (!motor2_done) {
-        if (motors[2].position < 2700) {
+        if (motors[2].position < 5000) {
           motorForward(2);
           motor2_forward = true;
         } else {
@@ -1003,12 +1003,12 @@ void processCommand(byte cmd[8]) {
         updateCurrentReading(2);
         drawOLED();
 
-        if ((motor2_forward && motors[2].position >= 2700) ||
-            (!motor2_forward && motors[2].position <= 2700)) {
+        if ((motor2_forward && motors[2].position >= 5000) ||
+            (!motor2_forward && motors[2].position <= 5000)) {
           motorStop(2);
           setPCA9685PWM(motors[2].pwmChannel, 0);
           motor2_done = true;
-          Serial.println("=> Motor2 reached position 2700");
+          Serial.println("=> Motor2 reached position 5000");
         }
       }
 
@@ -1020,13 +1020,13 @@ void processCommand(byte cmd[8]) {
     if (motor1_in_range) {
       Serial.println("=> State 1: After turn, moving Motor0 and Motor2...");
 
-      bool motor0_done = (motors[0].position == 2100);
-      bool motor2_done = (motors[2].position == 2700);
+      bool motor0_done = (motors[0].position == 4500);
+      bool motor2_done = (motors[2].position == 5000);
       bool motor0_forward = false;
       bool motor2_forward = false;
 
       if (!motor0_done) {
-        if (motors[0].position < 2100) {
+        if (motors[0].position < 4500) {
           motorForward(0);
           motor0_forward = true;
         } else {
@@ -1037,7 +1037,7 @@ void processCommand(byte cmd[8]) {
       }
 
       if (!motor2_done) {
-        if (motors[2].position < 2700) {
+        if (motors[2].position < 5000) {
           motorForward(2);
           motor2_forward = true;
         } else {
@@ -1056,23 +1056,23 @@ void processCommand(byte cmd[8]) {
 
         // 检查电机0是否到达
         if (!motor0_done) {
-          if ((motor0_forward && motors[0].position >= 2100) ||
-              (!motor0_forward && motors[0].position <= 2100)) {
+          if ((motor0_forward && motors[0].position >= 4500) ||
+              (!motor0_forward && motors[0].position <= 4500)) {
             motorStop(0);
             setPCA9685PWM(motors[0].pwmChannel, 0);
             motor0_done = true;
-            Serial.println("=> Motor0 reached position 2100");
+            Serial.println("=> Motor0 reached position 4500");
           }
         }
 
         // 检查电机2是否到达
         if (!motor2_done) {
-          if ((motor2_forward && motors[2].position >= 2700) ||
-              (!motor2_forward && motors[2].position <= 2700)) {
+          if ((motor2_forward && motors[2].position >= 5000) ||
+              (!motor2_forward && motors[2].position <= 5000)) {
             motorStop(2);
             setPCA9685PWM(motors[2].pwmChannel, 0);
             motor2_done = true;
-            Serial.println("=> Motor2 reached position 2700");
+            Serial.println("=> Motor2 reached position 5000");
           }
         }
       }
@@ -1089,12 +1089,12 @@ void processCommand(byte cmd[8]) {
       motorForward(1);
       setPCA9685PWM(motors[1].pwmChannel, pctToDuty(SPEED_PERCENT));
 
-      // 启动电机2移动到2700
-      bool motor2_done = (motors[2].position == 2700);
+      // 启动电机2移动到5000
+      bool motor2_done = (motors[2].position == 5000);
       bool motor2_forward = false;
 
       if (!motor2_done) {
-        if (motors[2].position < 2700) {
+        if (motors[2].position < 5000) {
           motorForward(2);
           motor2_forward = true;
         } else {
@@ -1133,12 +1133,12 @@ void processCommand(byte cmd[8]) {
 
         // 检查电机2是否到达目标位置
         if (!motor2_done) {
-          if ((motor2_forward && motors[2].position >= 2700) ||
-              (!motor2_forward && motors[2].position <= 2700)) {
+          if ((motor2_forward && motors[2].position >= 5000) ||
+              (!motor2_forward && motors[2].position <= 5000)) {
             motorStop(2);
             setPCA9685PWM(motors[2].pwmChannel, 0);
             motor2_done = true;
-            Serial.println("=> Motor2 reached position 2700");
+            Serial.println("=> Motor2 reached position 5000");
           }
         }
       }
@@ -1151,10 +1151,10 @@ void processCommand(byte cmd[8]) {
     Serial.println("=> ERROR: Bed state invalid for FLAT command");
     Serial.print("=> Motor0 position: ");
     Serial.print(motors[0].position);
-    Serial.println(" (required: 2000-2200 for State 2)");
+    Serial.println(" (required: 4200-4800 for State 2)");
     Serial.print("=> Motor1 position: ");
     Serial.print(motors[1].position);
-    Serial.println(" (required: 3250-3450 for State 1)");
+    Serial.println(" (required: 6500-6900 for State 1)");
     Serial.println("=> FLAT command ignored");
     return;
   }
@@ -1163,8 +1163,8 @@ void processCommand(byte cmd[8]) {
   else if (memcmp(cmd, cmdRaiseBack, 8) == 0) {
     Serial.println("=> RAISE BACK: Checking Motor0 position...");
 
-    // 检查电机0位置是否在2000-2200范围内
-    if (motors[0].position >= 2000 && motors[0].position <= 2200) {
+    // 检查电机0位置是否在4200-4800范围内
+    if (motors[0].position >= 4200 && motors[0].position <= 4800) {
       Serial.print("=> Motor0 position OK (");
       Serial.print(motors[0].position);
       Serial.println("), Motor1 reversing...");
@@ -1176,7 +1176,7 @@ void processCommand(byte cmd[8]) {
     } else {
       Serial.print("=> Motor0 position out of range: ");
       Serial.print(motors[0].position);
-      Serial.println(" (required: 2000-2200)");
+      Serial.println(" (required: 4200-4800)");
       Serial.println("=> RAISE BACK: Command ignored");
     }
     return;
@@ -1184,10 +1184,10 @@ void processCommand(byte cmd[8]) {
 
   // 抬腿
   else if (memcmp(cmd, cmdRaiseLeg, 8) == 0) {
-    Serial.println("=> RAISE LEG: Moving Motor2 to position 3200...");
+    Serial.println("=> RAISE LEG: Moving Motor2 to position 6700...");
 
     // 检查是否已在目标范围内
-    if (motors[2].position >= 3100 && motors[2].position <= 3300) {
+    if (motors[2].position >= 6500 && motors[2].position <= 6900) {
       Serial.print("=> Motor2 already in target range: ");
       Serial.println(motors[2].position);
       Serial.println("=> RAISE LEG completed");
@@ -1197,14 +1197,14 @@ void processCommand(byte cmd[8]) {
     bool motor2_done = false;
     bool motor2_forward = false;
 
-    if (motors[2].position < 3100) {
+    if (motors[2].position < 6500) {
       motorForward(2);
       motor2_forward = true;
-      Serial.println("=> Motor2 moving forward to 3200");
+      Serial.println("=> Motor2 moving forward to 6700");
     } else {
       motorReverse(2);
       motor2_forward = false;
-      Serial.println("=> Motor2 moving reverse to 3200");
+      Serial.println("=> Motor2 moving reverse to 6700");
     }
     setPCA9685PWM(motors[2].pwmChannel, pctToDuty(SPEED_PERCENT));
 
@@ -1214,8 +1214,8 @@ void processCommand(byte cmd[8]) {
       updateCurrentReading(2);
       drawOLED();
 
-      if ((motor2_forward && motors[2].position >= 3200) ||
-          (!motor2_forward && motors[2].position <= 3200)) {
+      if ((motor2_forward && motors[2].position >= 6700) ||
+          (!motor2_forward && motors[2].position <= 6700)) {
         motorStop(2);
         setPCA9685PWM(motors[2].pwmChannel, 0);
         motor2_done = true;
@@ -1232,11 +1232,11 @@ void processCommand(byte cmd[8]) {
   else if (memcmp(cmd, cmdSit, 8) == 0) {
     Serial.println("=> RAISE BACK + LEG ZERO: Checking Motor0 position...");
 
-    // 检查电机0位置是否在2000-2200范围内
-    if (motors[0].position < 2000 || motors[0].position > 2200) {
+    // 检查电机0位置是否在4200-4800范围内
+    if (motors[0].position < 4200 || motors[0].position > 4800) {
       Serial.print("=> Motor0 position out of range: ");
       Serial.print(motors[0].position);
-      Serial.println(" (required: 2000-2200)");
+      Serial.println(" (required: 4200-4800)");
       Serial.println("=> RAISE BACK + LEG ZERO: Command ignored");
       return;
     }
