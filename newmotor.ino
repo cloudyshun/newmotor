@@ -544,13 +544,13 @@ void ISR_motor3_AB() {
       (lastState == 0b01 && currentState == 0b11) ||
       (lastState == 0b11 && currentState == 0b10) ||
       (lastState == 0b10 && currentState == 0b00)) {
-    motors[3].position++;  // 方向已反转：伸出递增
+    motors[3].position--;  // 方向已反转：伸出递增
   }
   else if ((lastState == 0b00 && currentState == 0b10) ||
            (lastState == 0b10 && currentState == 0b11) ||
            (lastState == 0b11 && currentState == 0b01) ||
            (lastState == 0b01 && currentState == 0b00)) {
-    motors[3].position--;  // 方向已反转：缩回递减
+    motors[3].position++;  // 方向已反转：缩回递减
   }
 
   motors[3].lastState = currentState;
@@ -569,13 +569,13 @@ void ISR_motor4_AB() {
       (lastState == 0b01 && currentState == 0b11) ||
       (lastState == 0b11 && currentState == 0b10) ||
       (lastState == 0b10 && currentState == 0b00)) {
-    motors[4].position++;
+    motors[4].position--;
   }
   else if ((lastState == 0b00 && currentState == 0b10) ||
            (lastState == 0b10 && currentState == 0b11) ||
            (lastState == 0b11 && currentState == 0b01) ||
            (lastState == 0b01 && currentState == 0b00)) {
-    motors[4].position--;
+    motors[4].position++;
   }
 
   motors[4].lastState = currentState;
@@ -594,13 +594,13 @@ void ISR_motor5_AB() {
       (lastState == 0b01 && currentState == 0b11) ||
       (lastState == 0b11 && currentState == 0b10) ||
       (lastState == 0b10 && currentState == 0b00)) {
-    motors[5].position++;
+    motors[5].position--;
   }
   else if ((lastState == 0b00 && currentState == 0b10) ||
            (lastState == 0b10 && currentState == 0b11) ||
            (lastState == 0b11 && currentState == 0b01) ||
            (lastState == 0b01 && currentState == 0b00)) {
-    motors[5].position--;
+    motors[5].position++;
   }
 
   motors[5].lastState = currentState;
@@ -1311,11 +1311,124 @@ void processCommand(byte cmd[8]) {
     return;
   }
 
-  // 如厕（新增指令，需要定义具体逻辑）
+  // 如厕（三阶段顺序执行：M4→0, M3→0, M5→4500）
   else if (memcmp(cmd, cmdToilet, 8) == 0) {
-    Serial.println("=> TOILET: Command received");
-    // TODO: 添加如厕动作的具体逻辑
-    Serial.println("=> TOILET: Not implemented yet");
+    Serial.println("=> TOILET: Starting 3-stage sequence...");
+
+    // ===== 阶段1：M4移动到位置0 =====
+    Serial.println("=> Stage 1: Moving Motor4 to position 0...");
+
+    bool motor4_done = (motors[4].position == 0);
+    bool motor4_forward = false;
+
+    if (!motor4_done) {
+      if (motors[4].position < 0) {
+        motorForward(4);
+        motor4_forward = true;
+        Serial.println("=> Motor4 moving forward to 0");
+      } else {
+        motorReverse(4);
+        motor4_forward = false;
+        Serial.println("=> Motor4 moving reverse to 0");
+      }
+      setPCA9685PWM(motors[4].pwmChannel, pctToDuty(SPEED_PERCENT));
+    } else {
+      Serial.println("=> Motor4 already at position 0");
+    }
+
+    // 等待M4到达位置0
+    while (!motor4_done) {
+      delay(50);
+      updateCurrentReading(4);
+      drawOLED();
+
+      if ((motor4_forward && motors[4].position >= 0) ||
+          (!motor4_forward && motors[4].position <= 0)) {
+        motorStop(4);
+        setPCA9685PWM(motors[4].pwmChannel, 0);
+        motor4_done = true;
+        Serial.println("=> Motor4 reached position 0");
+      }
+    }
+
+    Serial.println("=> Stage 1 completed");
+
+    // ===== 阶段2：M3移动到位置0 =====
+    Serial.println("=> Stage 2: Moving Motor3 to position 0...");
+
+    bool motor3_done = (motors[3].position == 0);
+    bool motor3_forward = false;
+
+    if (!motor3_done) {
+      if (motors[3].position < 0) {
+        motorForward(3);
+        motor3_forward = true;
+        Serial.println("=> Motor3 moving forward to 0");
+      } else {
+        motorReverse(3);
+        motor3_forward = false;
+        Serial.println("=> Motor3 moving reverse to 0");
+      }
+      setPCA9685PWM(motors[3].pwmChannel, pctToDuty(SPEED_PERCENT));
+    } else {
+      Serial.println("=> Motor3 already at position 0");
+    }
+
+    // 等待M3到达位置0
+    while (!motor3_done) {
+      delay(50);
+      updateCurrentReading(3);
+      drawOLED();
+
+      if ((motor3_forward && motors[3].position >= 0) ||
+          (!motor3_forward && motors[3].position <= 0)) {
+        motorStop(3);
+        setPCA9685PWM(motors[3].pwmChannel, 0);
+        motor3_done = true;
+        Serial.println("=> Motor3 reached position 0");
+      }
+    }
+
+    Serial.println("=> Stage 2 completed");
+
+    // ===== 阶段3：M5移动到位置4500 =====
+    Serial.println("=> Stage 3: Moving Motor5 to position 4500...");
+
+    bool motor5_done = (motors[5].position == 4500);
+    bool motor5_forward = false;
+
+    if (!motor5_done) {
+      if (motors[5].position < 4500) {
+        motorForward(5);
+        motor5_forward = true;
+        Serial.println("=> Motor5 moving forward to 4500");
+      } else {
+        motorReverse(5);
+        motor5_forward = false;
+        Serial.println("=> Motor5 moving reverse to 4500");
+      }
+      setPCA9685PWM(motors[5].pwmChannel, pctToDuty(SPEED_PERCENT));
+    } else {
+      Serial.println("=> Motor5 already at position 4500");
+    }
+
+    // 等待M5到达位置4500
+    while (!motor5_done) {
+      delay(50);
+      updateCurrentReading(5);
+      drawOLED();
+
+      if ((motor5_forward && motors[5].position >= 4500) ||
+          (!motor5_forward && motors[5].position <= 4500)) {
+        motorStop(5);
+        setPCA9685PWM(motors[5].pwmChannel, 0);
+        motor5_done = true;
+        Serial.println("=> Motor5 reached position 4500");
+      }
+    }
+
+    Serial.println("=> Stage 3 completed");
+    Serial.println("=> TOILET sequence completed successfully");
     return;
   }
 
