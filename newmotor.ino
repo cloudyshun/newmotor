@@ -62,6 +62,7 @@ struct Motor {
   volatile int16_t position;    // 当前位置
   volatile uint32_t hallA_count; // A相脉冲计数
   volatile uint32_t hallB_count; // B相脉冲计数
+  volatile uint8_t lastState;   // 上一次的AB状态 (bit1=A, bit0=B)
 
   // 电流采样滤波
   float current_buffer[FILTER_N]; // 电流滑动平均缓冲区
@@ -95,7 +96,7 @@ Motor motors[7] = {
     PA0, PA1,               // hallPinA, hallPinB
     0,                      // adcChannel
     0,                      // pwmChannel
-    0, 0, 0,                // position, hallA_count, hallB_count
+    0, 0, 0, 0,             // position, hallA_count, hallB_count, lastState
     {0}, 0, 0.0, false, 0.0, // current_buffer, buffer_index, sum_current, buffer_filled, current_amps
     0, 0, 0.0, 0.0,         // last_hallA_cnt, last_hallB_cnt, freq_hallA, freq_hallB
     0, 0, 0,                // lastSavedPosition, lastLoopPosition, lastPosChangeTime
@@ -108,7 +109,7 @@ Motor motors[7] = {
     0x00, 0x02,
     PA2, PA3,
     1, 1,
-    0, 0, 0,
+    0, 0, 0, 0,
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
@@ -121,7 +122,7 @@ Motor motors[7] = {
     0x00, 0x04,
     PA4, PA5,
     2, 2,
-    0, 0, 0,
+    0, 0, 0, 0,
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
@@ -134,7 +135,7 @@ Motor motors[7] = {
     0x00, 0x08,
     PA6, PA7,
     3, 3,
-    0, 0, 0,
+    0, 0, 0, 0,
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
@@ -147,7 +148,7 @@ Motor motors[7] = {
     0x00, 0x10,
     PB8, PB9,
     4, 4,
-    0, 0, 0,
+    0, 0, 0, 0,
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
@@ -160,7 +161,7 @@ Motor motors[7] = {
     0x00, 0x20,
     PB10, PB11,
     5, 5,
-    0, 0, 0,
+    0, 0, 0, 0,
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
@@ -173,7 +174,7 @@ Motor motors[7] = {
     0x00, 0x40,
     PB12, PB15,
     6, 6,
-    0, 0, 0,
+    0, 0, 0, 0,
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
@@ -450,95 +451,186 @@ void updateCurrentReading(uint8_t motorIndex) {
 
 // ================= 中断处理 =================
 
+// 4倍频正交解码中断处理函数（通用）
 // Motor0 (PA0, PA1)
-void ISR_motor0_A() {
-  motors[0].hallA_count++;
-  if (digitalRead(motors[0].hallPinA) == digitalRead(motors[0].hallPinB)) {
-    motors[0].position--;
-  } else {
-    motors[0].position++;
+void ISR_motor0_AB() {
+  uint8_t A = digitalRead(motors[0].hallPinA);
+  uint8_t B = digitalRead(motors[0].hallPinB);
+  uint8_t currentState = (A << 1) | B;
+  uint8_t lastState = motors[0].lastState;
+
+  // 状态转换表判断方向（格雷码序列）
+  // 正转: 00 -> 01 -> 11 -> 10 -> 00
+  // 反转: 00 -> 10 -> 11 -> 01 -> 00
+  if ((lastState == 0b00 && currentState == 0b01) ||
+      (lastState == 0b01 && currentState == 0b11) ||
+      (lastState == 0b11 && currentState == 0b10) ||
+      (lastState == 0b10 && currentState == 0b00)) {
+    motors[0].position--;  // 正转（根据实际情况可能需要调整方向）
   }
-}
-void ISR_motor0_B() {
-  motors[0].hallB_count++;
+  else if ((lastState == 0b00 && currentState == 0b10) ||
+           (lastState == 0b10 && currentState == 0b11) ||
+           (lastState == 0b11 && currentState == 0b01) ||
+           (lastState == 0b01 && currentState == 0b00)) {
+    motors[0].position++;  // 反转
+  }
+  // 其他情况：非法转换或噪声，忽略
+
+  motors[0].lastState = currentState;
+
+  // 更新计数（用于频率统计）
+  if (A != (lastState >> 1)) motors[0].hallA_count++;
+  if (B != (lastState & 0x01)) motors[0].hallB_count++;
 }
 
 // Motor1 (PA2, PA3)
-void ISR_motor1_A() {
-  motors[1].hallA_count++;
-  if (digitalRead(motors[1].hallPinA) == digitalRead(motors[1].hallPinB)) {
+void ISR_motor1_AB() {
+  uint8_t A = digitalRead(motors[1].hallPinA);
+  uint8_t B = digitalRead(motors[1].hallPinB);
+  uint8_t currentState = (A << 1) | B;
+  uint8_t lastState = motors[1].lastState;
+
+  if ((lastState == 0b00 && currentState == 0b01) ||
+      (lastState == 0b01 && currentState == 0b11) ||
+      (lastState == 0b11 && currentState == 0b10) ||
+      (lastState == 0b10 && currentState == 0b00)) {
     motors[1].position--;
-  } else {
+  }
+  else if ((lastState == 0b00 && currentState == 0b10) ||
+           (lastState == 0b10 && currentState == 0b11) ||
+           (lastState == 0b11 && currentState == 0b01) ||
+           (lastState == 0b01 && currentState == 0b00)) {
     motors[1].position++;
   }
-}
-void ISR_motor1_B() {
-  motors[1].hallB_count++;
+
+  motors[1].lastState = currentState;
+  if (A != (lastState >> 1)) motors[1].hallA_count++;
+  if (B != (lastState & 0x01)) motors[1].hallB_count++;
 }
 
 // Motor2 (PA4, PA5)
-void ISR_motor2_A() {
-  motors[2].hallA_count++;
-  if (digitalRead(motors[2].hallPinA) == digitalRead(motors[2].hallPinB)) {
+void ISR_motor2_AB() {
+  uint8_t A = digitalRead(motors[2].hallPinA);
+  uint8_t B = digitalRead(motors[2].hallPinB);
+  uint8_t currentState = (A << 1) | B;
+  uint8_t lastState = motors[2].lastState;
+
+  if ((lastState == 0b00 && currentState == 0b01) ||
+      (lastState == 0b01 && currentState == 0b11) ||
+      (lastState == 0b11 && currentState == 0b10) ||
+      (lastState == 0b10 && currentState == 0b00)) {
     motors[2].position--;
-  } else {
+  }
+  else if ((lastState == 0b00 && currentState == 0b10) ||
+           (lastState == 0b10 && currentState == 0b11) ||
+           (lastState == 0b11 && currentState == 0b01) ||
+           (lastState == 0b01 && currentState == 0b00)) {
     motors[2].position++;
   }
-}
-void ISR_motor2_B() {
-  motors[2].hallB_count++;
+
+  motors[2].lastState = currentState;
+  if (A != (lastState >> 1)) motors[2].hallA_count++;
+  if (B != (lastState & 0x01)) motors[2].hallB_count++;
 }
 
 // Motor3 (PA6, PA7)
-void ISR_motor3_A() {
-  motors[3].hallA_count++;
-  if (digitalRead(motors[3].hallPinA) == digitalRead(motors[3].hallPinB)) {
-    motors[3].position++;
-  } else {
+void ISR_motor3_AB() {
+  uint8_t A = digitalRead(motors[3].hallPinA);
+  uint8_t B = digitalRead(motors[3].hallPinB);
+  uint8_t currentState = (A << 1) | B;
+  uint8_t lastState = motors[3].lastState;
+
+  if ((lastState == 0b00 && currentState == 0b01) ||
+      (lastState == 0b01 && currentState == 0b11) ||
+      (lastState == 0b11 && currentState == 0b10) ||
+      (lastState == 0b10 && currentState == 0b00)) {
+    motors[3].position++;  // 注意：motor3-6方向与0-2相反
+  }
+  else if ((lastState == 0b00 && currentState == 0b10) ||
+           (lastState == 0b10 && currentState == 0b11) ||
+           (lastState == 0b11 && currentState == 0b01) ||
+           (lastState == 0b01 && currentState == 0b00)) {
     motors[3].position--;
   }
-}
-void ISR_motor3_B() {
-  motors[3].hallB_count++;
+
+  motors[3].lastState = currentState;
+  if (A != (lastState >> 1)) motors[3].hallA_count++;
+  if (B != (lastState & 0x01)) motors[3].hallB_count++;
 }
 
 // Motor4 (PB8, PB9)
-void ISR_motor4_A() {
-  motors[4].hallA_count++;
-  if (digitalRead(motors[4].hallPinA) == digitalRead(motors[4].hallPinB)) {
+void ISR_motor4_AB() {
+  uint8_t A = digitalRead(motors[4].hallPinA);
+  uint8_t B = digitalRead(motors[4].hallPinB);
+  uint8_t currentState = (A << 1) | B;
+  uint8_t lastState = motors[4].lastState;
+
+  if ((lastState == 0b00 && currentState == 0b01) ||
+      (lastState == 0b01 && currentState == 0b11) ||
+      (lastState == 0b11 && currentState == 0b10) ||
+      (lastState == 0b10 && currentState == 0b00)) {
     motors[4].position++;
-  } else {
+  }
+  else if ((lastState == 0b00 && currentState == 0b10) ||
+           (lastState == 0b10 && currentState == 0b11) ||
+           (lastState == 0b11 && currentState == 0b01) ||
+           (lastState == 0b01 && currentState == 0b00)) {
     motors[4].position--;
   }
-}
-void ISR_motor4_B() {
-  motors[4].hallB_count++;
+
+  motors[4].lastState = currentState;
+  if (A != (lastState >> 1)) motors[4].hallA_count++;
+  if (B != (lastState & 0x01)) motors[4].hallB_count++;
 }
 
 // Motor5 (PB10, PB11)
-void ISR_motor5_A() {
-  motors[5].hallA_count++;
-  if (digitalRead(motors[5].hallPinA) == digitalRead(motors[5].hallPinB)) {
+void ISR_motor5_AB() {
+  uint8_t A = digitalRead(motors[5].hallPinA);
+  uint8_t B = digitalRead(motors[5].hallPinB);
+  uint8_t currentState = (A << 1) | B;
+  uint8_t lastState = motors[5].lastState;
+
+  if ((lastState == 0b00 && currentState == 0b01) ||
+      (lastState == 0b01 && currentState == 0b11) ||
+      (lastState == 0b11 && currentState == 0b10) ||
+      (lastState == 0b10 && currentState == 0b00)) {
     motors[5].position++;
-  } else {
+  }
+  else if ((lastState == 0b00 && currentState == 0b10) ||
+           (lastState == 0b10 && currentState == 0b11) ||
+           (lastState == 0b11 && currentState == 0b01) ||
+           (lastState == 0b01 && currentState == 0b00)) {
     motors[5].position--;
   }
-}
-void ISR_motor5_B() {
-  motors[5].hallB_count++;
+
+  motors[5].lastState = currentState;
+  if (A != (lastState >> 1)) motors[5].hallA_count++;
+  if (B != (lastState & 0x01)) motors[5].hallB_count++;
 }
 
 // Motor6 (PB12, PB15)
-void ISR_motor6_A() {
-  motors[6].hallA_count++;
-  if (digitalRead(motors[6].hallPinA) == digitalRead(motors[6].hallPinB)) {
+void ISR_motor6_AB() {
+  uint8_t A = digitalRead(motors[6].hallPinA);
+  uint8_t B = digitalRead(motors[6].hallPinB);
+  uint8_t currentState = (A << 1) | B;
+  uint8_t lastState = motors[6].lastState;
+
+  if ((lastState == 0b00 && currentState == 0b01) ||
+      (lastState == 0b01 && currentState == 0b11) ||
+      (lastState == 0b11 && currentState == 0b10) ||
+      (lastState == 0b10 && currentState == 0b00)) {
     motors[6].position++;
-  } else {
+  }
+  else if ((lastState == 0b00 && currentState == 0b10) ||
+           (lastState == 0b10 && currentState == 0b11) ||
+           (lastState == 0b11 && currentState == 0b01) ||
+           (lastState == 0b01 && currentState == 0b00)) {
     motors[6].position--;
   }
-}
-void ISR_motor6_B() {
-  motors[6].hallB_count++;
+
+  motors[6].lastState = currentState;
+  if (A != (lastState >> 1)) motors[6].hallA_count++;
+  if (B != (lastState & 0x01)) motors[6].hallB_count++;
 }
 
 // ================= 指令解析与执行 =================
@@ -1327,6 +1419,14 @@ void setup() {
     pinMode(motors[i].hallPinB, INPUT_PULLUP);
   }
 
+  // --- 读取并初始化所有电机的霍尔编码器初始状态 ---
+  for (int i = 0; i < 7; i++) {
+    uint8_t A = digitalRead(motors[i].hallPinA);
+    uint8_t B = digitalRead(motors[i].hallPinB);
+    motors[i].lastState = (A << 1) | B;
+  }
+  Serial.println("Hall encoder initial states loaded.");
+
   digitalWrite(PIN_OE, HIGH);
   shiftOut16(0x00, 0x00);
   digitalWrite(PIN_OE, LOW);
@@ -1389,36 +1489,36 @@ void setup() {
   display.display();
   delay(1500);
 
-  // --- 6. 为所有7个电机开启中断 ---
-  Serial.println("Attaching interrupts for all motors...");
+  // --- 6. 为所有7个电机开启中断（4倍频正交解码）---
+  Serial.println("Attaching interrupts for all motors (4x quadrature decoding)...");
 
-  // Motor0 (PA0, PA1)
-  attachInterrupt(digitalPinToInterrupt(motors[0].hallPinA), ISR_motor0_A, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(motors[0].hallPinB), ISR_motor0_B, CHANGE);
+  // Motor0 (PA0, PA1) - A和B都绑定到同一个中断函数
+  attachInterrupt(digitalPinToInterrupt(motors[0].hallPinA), ISR_motor0_AB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[0].hallPinB), ISR_motor0_AB, CHANGE);
 
   // Motor1 (PA2, PA3)
-  attachInterrupt(digitalPinToInterrupt(motors[1].hallPinA), ISR_motor1_A, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(motors[1].hallPinB), ISR_motor1_B, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[1].hallPinA), ISR_motor1_AB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[1].hallPinB), ISR_motor1_AB, CHANGE);
 
   // Motor2 (PA4, PA5)
-  attachInterrupt(digitalPinToInterrupt(motors[2].hallPinA), ISR_motor2_A, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(motors[2].hallPinB), ISR_motor2_B, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[2].hallPinA), ISR_motor2_AB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[2].hallPinB), ISR_motor2_AB, CHANGE);
 
   // Motor3 (PA6, PA7)
-  attachInterrupt(digitalPinToInterrupt(motors[3].hallPinA), ISR_motor3_A, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(motors[3].hallPinB), ISR_motor3_B, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[3].hallPinA), ISR_motor3_AB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[3].hallPinB), ISR_motor3_AB, CHANGE);
 
   // Motor4 (PB8, PB9)
-  attachInterrupt(digitalPinToInterrupt(motors[4].hallPinA), ISR_motor4_A, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(motors[4].hallPinB), ISR_motor4_B, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[4].hallPinA), ISR_motor4_AB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[4].hallPinB), ISR_motor4_AB, CHANGE);
 
   // Motor5 (PB10, PB11)
-  attachInterrupt(digitalPinToInterrupt(motors[5].hallPinA), ISR_motor5_A, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(motors[5].hallPinB), ISR_motor5_B, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[5].hallPinA), ISR_motor5_AB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[5].hallPinB), ISR_motor5_AB, CHANGE);
 
   // Motor6 (PB12, PB15)
-  attachInterrupt(digitalPinToInterrupt(motors[6].hallPinA), ISR_motor6_A, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(motors[6].hallPinB), ISR_motor6_B, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[6].hallPinA), ISR_motor6_AB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[6].hallPinB), ISR_motor6_AB, CHANGE);
 
   Serial.println("All interrupts attached successfully.");
 
