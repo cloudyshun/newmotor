@@ -243,6 +243,7 @@ const byte cmdRaiseBack[8]  = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x13};
 const byte cmdRaiseLeg[8]   = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x14};
 const byte cmdSit[8]        = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x15};
 const byte cmdToilet[8]     = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x16};
+const byte cmdEndToilet[8]  = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x17};
 
 byte cmdBuffer[8];  // 8字节命令缓冲区
 int cmdIndex = 0;
@@ -1498,6 +1499,127 @@ void processCommand(byte cmd[8]) {
     }
 
     Serial.println("=> TOILET sequence completed successfully (all actions finished)");
+    return;
+  }
+
+  // 结束如厕（三阶段顺序执行：M5→0, M3→11800, M4→7300）
+  else if (memcmp(cmd, cmdEndToilet, 8) == 0) {
+    Serial.println("=> END TOILET: Starting 3-stage sequence...");
+
+    // ===== 阶段1：M5移动到位置0 =====
+    Serial.println("=> Stage 1: Moving Motor5 to position 0...");
+
+    bool motor5_done = (motors[5].position == 0);
+    bool motor5_forward = false;
+
+    if (!motor5_done) {
+      if (motors[5].position < 0) {
+        motorForward(5);
+        motor5_forward = true;
+        Serial.println("=> Motor5 moving forward to 0");
+      } else {
+        motorReverse(5);
+        motor5_forward = false;
+        Serial.println("=> Motor5 moving reverse to 0");
+      }
+      setPCA9685PWM(motors[5].pwmChannel, pctToDuty(SPEED_PERCENT));
+    } else {
+      Serial.println("=> Motor5 already at position 0");
+    }
+
+    // 等待M5到达位置0
+    while (!motor5_done) {
+      delay(50);
+      updateCurrentReading(5);
+      drawOLED();
+
+      if ((motor5_forward && motors[5].position >= 0) ||
+          (!motor5_forward && motors[5].position <= 0)) {
+        motorStop(5);
+        setPCA9685PWM(motors[5].pwmChannel, 0);
+        motor5_done = true;
+        Serial.println("=> Motor5 reached position 0");
+      }
+    }
+
+    Serial.println("=> Stage 1 completed");
+
+    // ===== 阶段2：M3移动到位置11800 =====
+    Serial.println("=> Stage 2: Moving Motor3 to position 11800...");
+
+    bool motor3_done = (motors[3].position == 11800);
+    bool motor3_forward = false;
+
+    if (!motor3_done) {
+      if (motors[3].position < 11800) {
+        motorForward(3);
+        motor3_forward = true;
+        Serial.println("=> Motor3 moving forward to 11800");
+      } else {
+        motorReverse(3);
+        motor3_forward = false;
+        Serial.println("=> Motor3 moving reverse to 11800");
+      }
+      setPCA9685PWM(motors[3].pwmChannel, pctToDuty(SPEED_PERCENT));
+    } else {
+      Serial.println("=> Motor3 already at position 11800");
+    }
+
+    // 等待M3到达位置11800
+    while (!motor3_done) {
+      delay(50);
+      updateCurrentReading(3);
+      drawOLED();
+
+      if ((motor3_forward && motors[3].position >= 11800) ||
+          (!motor3_forward && motors[3].position <= 11800)) {
+        motorStop(3);
+        setPCA9685PWM(motors[3].pwmChannel, 0);
+        motor3_done = true;
+        Serial.println("=> Motor3 reached position 11800");
+      }
+    }
+
+    Serial.println("=> Stage 2 completed");
+
+    // ===== 阶段3：M4移动到位置7300 =====
+    Serial.println("=> Stage 3: Moving Motor4 to position 7300...");
+
+    bool motor4_done = (motors[4].position == 7300);
+    bool motor4_forward = false;
+
+    if (!motor4_done) {
+      if (motors[4].position < 7300) {
+        motorForward(4);
+        motor4_forward = true;
+        Serial.println("=> Motor4 moving forward to 7300");
+      } else {
+        motorReverse(4);
+        motor4_forward = false;
+        Serial.println("=> Motor4 moving reverse to 7300");
+      }
+      setPCA9685PWM(motors[4].pwmChannel, pctToDuty(SPEED_PERCENT));
+    } else {
+      Serial.println("=> Motor4 already at position 7300");
+    }
+
+    // 等待M4到达位置7300
+    while (!motor4_done) {
+      delay(50);
+      updateCurrentReading(4);
+      drawOLED();
+
+      if ((motor4_forward && motors[4].position >= 7300) ||
+          (!motor4_forward && motors[4].position <= 7300)) {
+        motorStop(4);
+        setPCA9685PWM(motors[4].pwmChannel, 0);
+        motor4_done = true;
+        Serial.println("=> Motor4 reached position 7300");
+      }
+    }
+
+    Serial.println("=> Stage 3 completed");
+    Serial.println("=> END TOILET sequence completed successfully");
     return;
   }
 
