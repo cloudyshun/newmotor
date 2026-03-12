@@ -542,8 +542,9 @@ int16_t getMotorPosition(uint8_t motorIndex) {
 bool startMotorToPosition(uint8_t motorIndex, int16_t targetPos, bool *forwardFlag) {
   int16_t currentPos = getMotorPosition(motorIndex);
 
-  if (currentPos == targetPos) {
-    return false; // 已在目标位置
+  // 使用容差范围判断（±10单位）
+  if (abs(currentPos - targetPos) <= 10) {
+    return false; // 已在目标位置（容差范围内）
   }
 
   if (currentPos < targetPos) {
@@ -561,6 +562,12 @@ bool startMotorToPosition(uint8_t motorIndex, int16_t targetPos, bool *forwardFl
 bool checkMotorReachedTarget(uint8_t motorIndex, int16_t targetPos, bool forward) {
   int16_t currentPos = getMotorPosition(motorIndex);
 
+  // 使用容差范围判断（±10单位）
+  if (abs(currentPos - targetPos) <= 10) {
+    return true;
+  }
+
+  // 原有的方向检查（防止越过目标）
   if (forward && currentPos >= targetPos) {
     return true;
   } else if (!forward && currentPos <= targetPos) {
@@ -1881,6 +1888,12 @@ void loop() {
       Serial.print("A > ");
       Serial.print(motors[currentMotorIndex].maxCurrent, 2);
       Serial.println("A - STOPPED");
+
+      // ⚠️ 重要：过流时中止状态机，防止卡死
+      if (currentState != STATE_IDLE) {
+        Serial.println("!!! State machine aborted due to overcurrent");
+        currentState = STATE_IDLE;
+      }
     }
 
     currentMotorIndex++;
