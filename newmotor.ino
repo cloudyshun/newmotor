@@ -1400,6 +1400,11 @@ void processCommand(byte cmd[8]) {
     bool motor0_in_range = (pos0 >= 4200 && pos0 <= 4800);
     bool motor1_in_range = (pos1 >= 6500 && pos1 <= 6900);
 
+    // 初始化标志（防止上次残留）
+    stateFlags.motor0_done = false;
+    stateFlags.motor1_done = false;
+    stateFlags.motor2_done = false;
+
     // 情况1：两个条件都满足 - 只需要移动电机2
     if (motor0_in_range && motor1_in_range) {
       Serial.println("=> State: Both turn and raise are homed, only moving Motor2...");
@@ -1520,6 +1525,9 @@ void processCommand(byte cmd[8]) {
       return;
     }
 
+    // 初始化标志（防止上次残留）
+    stateFlags.motor2_done = false;
+
     stateFlags.motor2_done = !startMotorToPosition(2, 6700, &stateFlags.motor2_forward);
     if (stateFlags.motor2_done) {
       Serial.println("=> Motor2 already at position 6700");
@@ -1562,6 +1570,10 @@ void processCommand(byte cmd[8]) {
     Serial.print(pos0);
     Serial.println("), starting RAISE BACK + LEG ZERO...");
 
+    // 初始化标志（防止上次残留）
+    stateFlags.motor1_done = false;
+    stateFlags.motor2_done = false;
+
     // 启动电机1反转（起背）
     motorReverse(1);
     setPCA9685PWM(motors[1].pwmChannel, pctToDuty(SPEED_PERCENT));
@@ -1578,8 +1590,7 @@ void processCommand(byte cmd[8]) {
       }
     }
 
-    // 初始化M1的极限位置检测
-    stateFlags.motor1_done = false;
+    // 初始化M1的极限位置检测变量
     stateFlags.motor1_lastPos = getMotorPosition(1);
     stateFlags.motor1_lastPosChange = millis();
 
