@@ -1631,6 +1631,11 @@ void processCommand(byte cmd[8]) {
       stateFlags.motor2_done = true;
     }
 
+    // 初始化所有阶段标志（防止上次残留）
+    stateFlags.motor3_done = false;
+    stateFlags.motor4_done = false;
+    stateFlags.motor5_done = false;
+
     // 启动阶段1: M4→0
     Serial.println("=> Stage 1: Moving Motor4 to position 0...");
     stateFlags.motor4_done = !startMotorToPosition(4, 0, &stateFlags.motor4_forward);
