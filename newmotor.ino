@@ -893,11 +893,23 @@ void updateStateMachine() {
     }
   }
 
-  // 起背状态机（非阻塞，持续运行）
+  // 起背状态机
   else if (currentState == STATE_RAISE_BACK_RUNNING) {
     updateCurrentReading(1);
-    // 起背是非阻塞的，一直运行直到用户发送停止命令或过流
-    // 这里不需要状态转换
+
+    // 检查是否到达极限位置（0.5秒内位置不变）
+    int16_t currentPos = getMotorPosition(1);
+    if (currentPos != lastMonitoredPos) {
+      lastMonitoredPos = currentPos;
+      lastPosChangeTime = millis();
+    }
+
+    if (millis() - lastPosChangeTime >= 500) {  // 0.5秒
+      motorStop(1);
+      setPCA9685PWM(motors[1].pwmChannel, 0);
+      Serial.println("=> RAISE BACK completed, Motor1 reached limit position");
+      currentState = STATE_IDLE;
+    }
   }
 
   // 抬腿状态机
@@ -1494,10 +1506,12 @@ void processCommand(byte cmd[8]) {
       motorReverse(1);
       setPCA9685PWM(motors[1].pwmChannel, pctToDuty(SPEED_PERCENT));
 
-      // 起背是非阻塞的，一直运行直到用户发送停止命令
+      // 初始化极限位置检测
       currentState = STATE_RAISE_BACK_RUNNING;
       stateStartTime = millis();
-      Serial.println("=> RAISE BACK: Motor1 reversing (non-blocking)");
+      lastPosChangeTime = millis();
+      lastMonitoredPos = getMotorPosition(1);
+      Serial.println("=> RAISE BACK: Motor1 reversing (will stop at limit)");
     } else {
       Serial.print("=> Motor0 position out of range: ");
       Serial.print(pos0);
