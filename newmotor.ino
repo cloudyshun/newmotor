@@ -100,7 +100,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0, // current_buffer, buffer_index, sum_current, buffer_filled, current_amps
     0, 0, 0.0, 0.0,         // last_hallA_cnt, last_hallB_cnt, freq_hallA, freq_hallB
     0, 0, 0,                // lastSavedPosition, lastLoopPosition, lastPosChangeTime
-    3.0                     // maxCurrent (A)
+    6.0                     // maxCurrent (A)
   },
   // motor1
   {
@@ -113,7 +113,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
-    3.0
+    6.0
   },
   // motor2
   {
@@ -126,7 +126,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
-    3.0
+    6.0
   },
   // motor3
   {
@@ -139,7 +139,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
-    3.0
+    6.0
   },
   // motor4
   {
@@ -152,7 +152,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
-    3.0
+    6.0
   },
   // motor5
   {
@@ -165,7 +165,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
-    3.0
+    6.0
   },
   // motor6
   {
@@ -178,7 +178,7 @@ Motor motors[7] = {
     {0}, 0, 0.0, false, 0.0,
     0, 0, 0.0, 0.0,
     0, 0, 0,
-    3.0
+    6.0
   }
 };
 
@@ -304,8 +304,11 @@ const byte cmdSit[8]        = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x15};
 const byte cmdToilet[8]     = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x16};
 const byte cmdEmergencyStop[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0xFF, 0xFF};
 
-byte cmdBuffer[8];  // 8字节命令缓冲区
-int cmdIndex = 0;
+// ---- 串口中断接收缓冲区 ----
+volatile byte cmdBuffer[8];           // 8字节命令缓冲区（中断写入）
+volatile int cmdIndex = 0;            // 当前接收索引
+volatile bool cmdReady = false;       // 命令接收完成标志
+volatile unsigned long lastRxTime = 0; // 上次接收时间（用于超时检测）
 
 // ---- 外设对象 ----
 #define OLED_WIDTH   128
@@ -1650,37 +1653,58 @@ void processCommand(byte cmd[8]) {
   Serial.println("=> Unknown command");
 }
 
-void handleScreenCommands() {
+// ================= 串口中断服务函数 =================
+
+// USART1 (Serial1) 中断服务函数
+// Arduino框架会自动调用这个函数（如果定义了）
+void serialEvent1() {
   while (SERIAL_SCREEN.available()) {
-    byte receivedByte = SERIAL_SCREEN.read();
+    byte inByte = SERIAL_SCREEN.read();
+    unsigned long currentTime = millis();
 
-    // 检测帧头 0xEE
-    if (receivedByte == 0xEE) {
-      cmdBuffer[0] = receivedByte;
-      cmdIndex = 1;
-      unsigned long startTime = millis();
-
-      // 读取剩余7字节，带20ms超时保护
-      while (cmdIndex < 8) {
-        if (SERIAL_SCREEN.available()) {
-          cmdBuffer[cmdIndex++] = SERIAL_SCREEN.read();
-        }
-        if (millis() - startTime > 20) {
-          cmdIndex = 0;
-          return;
-        }
-      }
-
-      // 收到完整8字节后处理
-      if (cmdIndex == 8) {
-        processCommand(cmdBuffer);
-
-        // 回传命令确认
-        SERIAL_SCREEN.write(cmdBuffer, 8);
-        SERIAL_SCREEN.flush();
-      }
+    // 超时检测：如果距离上次接收超过50ms，重置接收缓冲区
+    if (cmdIndex > 0 && (currentTime - lastRxTime > 50)) {
       cmdIndex = 0;
     }
+    lastRxTime = currentTime;
+
+    // 检测帧头 0xEE
+    if (inByte == 0xEE) {
+      cmdIndex = 0;  // 重置索引
+      cmdBuffer[cmdIndex++] = inByte;
+    }
+    // 接收后续字节
+    else if (cmdIndex > 0 && cmdIndex < 8) {
+      cmdBuffer[cmdIndex++] = inByte;
+
+      // 接收完整8字节命令
+      if (cmdIndex == 8) {
+        cmdReady = true;  // 标记命令就绪
+        cmdIndex = 0;     // 重置索引，准备接收下一条命令
+      }
+    }
+    // 其他情况：未收到帧头的数据，忽略
+  }
+}
+
+// 主循环中处理接收到的命令（非中断环境）
+void handleScreenCommands() {
+  if (cmdReady) {
+    // 原子操作：复制命令并清除标志
+    noInterrupts();
+    byte cmd[8];
+    for (int i = 0; i < 8; i++) {
+      cmd[i] = cmdBuffer[i];
+    }
+    cmdReady = false;
+    interrupts();
+
+    // 处理命令
+    processCommand(cmd);
+
+    // 回传命令确认
+    SERIAL_SCREEN.write(cmd, 8);
+    SERIAL_SCREEN.flush();
   }
 }
 
@@ -1728,6 +1752,11 @@ void setup() {
   afio_cfg_debug_ports(AFIO_DEBUG_SW_ONLY); // 禁用 JTAG
   Serial.begin(9600);
   SERIAL_SCREEN.begin(9600);
+
+  // 初始化串口中断接收变量
+  cmdIndex = 0;
+  cmdReady = false;
+  lastRxTime = 0;
 
   // --- 1. 初始化所有引脚 ---
   pinMode(PIN_4051_S0, OUTPUT);
@@ -1853,6 +1882,11 @@ void setup() {
 }
 
 void loop() {
+  // 串口中断接收（STM32需要手动调用）
+  if (SERIAL_SCREEN.available()) {
+    serialEvent1();
+  }
+
   // 状态机更新（优先级最高，非阻塞）
   updateStateMachine();
 
