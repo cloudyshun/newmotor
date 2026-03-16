@@ -233,11 +233,13 @@ struct StateFlags {
   bool motor3_done;
   bool motor4_done;
   bool motor5_done;
+  bool motor6_done;
   bool motor0_forward;
   bool motor2_forward;
   bool motor3_forward;
   bool motor4_forward;
   bool motor5_forward;
+  bool motor6_forward;
   int16_t motor1_lastPos;
   unsigned long motor1_lastPosChange;
 };
@@ -765,13 +767,13 @@ void ISR_motor6_AB() {
       (lastState == 0b01 && currentState == 0b11) ||
       (lastState == 0b11 && currentState == 0b10) ||
       (lastState == 0b10 && currentState == 0b00)) {
-    motors[6].position++;
+    motors[6].position--;
   }
   else if ((lastState == 0b00 && currentState == 0b10) ||
            (lastState == 0b10 && currentState == 0b11) ||
            (lastState == 0b11 && currentState == 0b01) ||
            (lastState == 0b01 && currentState == 0b00)) {
-    motors[6].position--;
+    motors[6].position++;
   }
 
   motors[6].lastState = currentState;
@@ -1013,11 +1015,13 @@ void updateStateMachine() {
 
     // M3完成后启动阶段3
     if (stateFlags.motor3_done) {
-      // 启动阶段3: M5→4500
+      // 启动阶段3: M5+M6→4500（同步）
       currentState = STATE_TOILET_STAGE3;
-      Serial.println("=> Stage 3: Moving Motor5 to position 4500...");
+      Serial.println("=> Stage 3: Moving Motor5 and Motor6 to position 4500...");
       stateFlags.motor5_done = !startMotorToPosition(5, 4500, &stateFlags.motor5_forward);
+      stateFlags.motor6_done = !startMotorToPosition(6, 4500, &stateFlags.motor6_forward);
       if (stateFlags.motor5_done) Serial.println("=> Motor5 already at position 4500");
+      if (stateFlags.motor6_done) Serial.println("=> Motor6 already at position 4500");
       return; // 重要：立即返回，下次循环处理STAGE3
     }
 
@@ -1038,6 +1042,7 @@ void updateStateMachine() {
 
   else if (currentState == STATE_TOILET_STAGE3) {
     if (!stateFlags.motor5_done) updateCurrentReading(5);
+    if (!stateFlags.motor6_done) updateCurrentReading(6);
     if (!stateFlags.motor1_done) updateCurrentReading(1);
     if (!stateFlags.motor2_done) updateCurrentReading(2);
 
@@ -1047,7 +1052,17 @@ void updateStateMachine() {
         motorStop(5);
         setPCA9685PWM(motors[5].pwmChannel, 0);
         stateFlags.motor5_done = true;
-        Serial.println("=> Motor5 reached position 4500 / Stage 3 completed");
+        Serial.println("=> Motor5 reached position 4500");
+      }
+    }
+
+    // 检查M6进度
+    if (!stateFlags.motor6_done) {
+      if (checkMotorReachedTarget(6, 4500, stateFlags.motor6_forward)) {
+        motorStop(6);
+        setPCA9685PWM(motors[6].pwmChannel, 0);
+        stateFlags.motor6_done = true;
+        Serial.println("=> Motor6 reached position 4500");
       }
     }
 
@@ -1066,7 +1081,7 @@ void updateStateMachine() {
     }
 
     // 检查是否全部完成
-    if (stateFlags.motor5_done && stateFlags.motor1_done && stateFlags.motor2_done) {
+    if (stateFlags.motor5_done && stateFlags.motor6_done && stateFlags.motor1_done && stateFlags.motor2_done) {
       Serial.println("=> TOILET sequence completed successfully (all actions finished)");
       currentState = STATE_IDLE;
     }
@@ -1249,37 +1264,51 @@ void processCommand(byte cmd[8]) {
     return;
   }
 
-  // ---- 电机5指令 ----
+  // ---- 电机5指令（同步控制电机6）----
   else if (memcmp(cmd, cmdMotor5Stop, 8) == 0) {
-    Serial.println("=> Motor5 STOP");
+    Serial.println("=> Motor5+6 STOP (synchronized)");
     motorStop(5);
+    motorStop(6);
     setPCA9685PWM(motors[5].pwmChannel, 0);
+    setPCA9685PWM(motors[6].pwmChannel, 0);
     return;
   }
   else if (memcmp(cmd, cmdMotor5Forward, 8) == 0) {
-    Serial.println("=> Motor5 FORWARD");
+    Serial.println("=> Motor5+6 FORWARD (synchronized)");
     motorForward(5);
+    motorForward(6);
     setPCA9685PWM(motors[5].pwmChannel, pctToDuty(SPEED_PERCENT));
+    setPCA9685PWM(motors[6].pwmChannel, pctToDuty(SPEED_PERCENT));
     return;
   }
   else if (memcmp(cmd, cmdMotor5Reverse, 8) == 0) {
-    Serial.println("=> Motor5 REVERSE");
+    Serial.println("=> Motor5+6 REVERSE (synchronized)");
     motorReverse(5);
+    motorReverse(6);
     setPCA9685PWM(motors[5].pwmChannel, pctToDuty(SPEED_PERCENT));
+    setPCA9685PWM(motors[6].pwmChannel, pctToDuty(SPEED_PERCENT));
     return;
   }
   else if (memcmp(cmd, cmdResetMotor5, 8) == 0) {
-    Serial.println("=> Motor5 RESET POSITION TO 0");
+    Serial.println("=> Motor5+6 RESET POSITION TO 0 (synchronized)");
     noInterrupts();
     motors[5].position = 0;
     motors[5].hallA_count = 0;
     motors[5].hallB_count = 0;
+    motors[6].position = 0;
+    motors[6].hallA_count = 0;
+    motors[6].hallB_count = 0;
     interrupts();
     savePositionToEEPROM(5, 0);
+    savePositionToEEPROM(6, 0);
     motors[5].lastSavedPosition = 0;
     motors[5].lastLoopPosition = 0;
     motors[5].last_hallA_cnt = 0;
     motors[5].last_hallB_cnt = 0;
+    motors[6].lastSavedPosition = 0;
+    motors[6].lastLoopPosition = 0;
+    motors[6].last_hallA_cnt = 0;
+    motors[6].last_hallB_cnt = 0;
     return;
   }
 
@@ -1660,6 +1689,7 @@ void processCommand(byte cmd[8]) {
     stateFlags.motor3_done = false;
     stateFlags.motor4_done = false;
     stateFlags.motor5_done = false;
+    stateFlags.motor6_done = false;
 
     // 启动阶段1: M4→0
     Serial.println("=> Stage 1: Moving Motor4 to position 0...");
