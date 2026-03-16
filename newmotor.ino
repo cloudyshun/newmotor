@@ -1145,12 +1145,12 @@ void updateStateMachine() {
 
     // M3完成后启动阶段3
     if (stateFlags.motor3_done) {
-      // 启动阶段3: M4→8800
+      // 启动阶段3: M4→7300
       currentState = STATE_END_TOILET_STAGE3;
       Serial.println("=> Stage 2 completed");
-      Serial.println("=> Stage 3: Moving Motor4 to position 8800...");
-      stateFlags.motor4_done = !startMotorToPosition(4, 8800, &stateFlags.motor4_forward);
-      if (stateFlags.motor4_done) Serial.println("=> Motor4 already at position 8800");
+      Serial.println("=> Stage 3: Moving Motor4 to position 7300...");
+      stateFlags.motor4_done = !startMotorToPosition(4, 7300, &stateFlags.motor4_forward);
+      if (stateFlags.motor4_done) Serial.println("=> Motor4 already at position 7300");
       return; // 重要：立即返回，下次循环处理STAGE3
     }
   }
@@ -1160,11 +1160,11 @@ void updateStateMachine() {
 
     // 检查M4进度
     if (!stateFlags.motor4_done) {
-      if (checkMotorReachedTarget(4, 8800, stateFlags.motor4_forward)) {
+      if (checkMotorReachedTarget(4, 7300, stateFlags.motor4_forward)) {
         motorStop(4);
         setPCA9685PWM(motors[4].pwmChannel, 0);
         stateFlags.motor4_done = true;
-        Serial.println("=> Motor4 reached position 8800");
+        Serial.println("=> Motor4 reached position 7300");
       }
     }
 
@@ -1798,7 +1798,7 @@ void processCommand(byte cmd[8]) {
     return;
   }
 
-  // 结束如厕（三阶段顺序执行：M5+M6→0, M3→12500, M4→8800）
+  // 结束如厕（三阶段顺序执行：M5+M6→0, M3→12500, M4→7300）
   else if (memcmp(cmd, cmdEndToilet, 8) == 0) {
     if (currentState != STATE_IDLE) {
       Serial.println("=> END TOILET: State machine busy, command ignored");
