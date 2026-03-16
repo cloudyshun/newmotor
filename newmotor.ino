@@ -216,7 +216,12 @@ enum MotionState {
   STATE_TOILET_STAGE1,
   STATE_TOILET_STAGE2,
   STATE_TOILET_STAGE3,
-  STATE_TOILET_WAIT_COMPLETE
+  STATE_TOILET_WAIT_COMPLETE,
+
+  // 结束如厕状态
+  STATE_END_TOILET_STAGE1,
+  STATE_END_TOILET_STAGE2,
+  STATE_END_TOILET_STAGE3
 };
 
 // 状态机全局变量
@@ -304,6 +309,7 @@ const byte cmdRaiseBack[8]  = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x13};
 const byte cmdRaiseLeg[8]   = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x14};
 const byte cmdSit[8]        = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x15};
 const byte cmdToilet[8]     = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x16};
+const byte cmdEndToilet[8]  = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x17};
 const byte cmdEmergencyStop[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0xFF, 0xFF};
 
 // ---- 串口中断接收缓冲区 ----
@@ -1086,6 +1092,89 @@ void updateStateMachine() {
       currentState = STATE_IDLE;
     }
   }
+
+  // 结束如厕状态机
+  else if (currentState == STATE_END_TOILET_STAGE1) {
+    if (!stateFlags.motor5_done) updateCurrentReading(5);
+    if (!stateFlags.motor6_done) updateCurrentReading(6);
+
+    // 检查M5进度
+    if (!stateFlags.motor5_done) {
+      if (checkMotorReachedTarget(5, 0, stateFlags.motor5_forward)) {
+        motorStop(5);
+        setPCA9685PWM(motors[5].pwmChannel, 0);
+        stateFlags.motor5_done = true;
+        Serial.println("=> Motor5 reached position 0");
+      }
+    }
+
+    // 检查M6进度
+    if (!stateFlags.motor6_done) {
+      if (checkMotorReachedTarget(6, 0, stateFlags.motor6_forward)) {
+        motorStop(6);
+        setPCA9685PWM(motors[6].pwmChannel, 0);
+        stateFlags.motor6_done = true;
+        Serial.println("=> Motor6 reached position 0");
+      }
+    }
+
+    // M5和M6都完成后启动阶段2
+    if (stateFlags.motor5_done && stateFlags.motor6_done) {
+      // 启动阶段2: M3→12500
+      currentState = STATE_END_TOILET_STAGE2;
+      Serial.println("=> Stage 1 completed");
+      Serial.println("=> Stage 2: Moving Motor3 to position 12500...");
+      stateFlags.motor3_done = !startMotorToPosition(3, 12500, &stateFlags.motor3_forward);
+      if (stateFlags.motor3_done) Serial.println("=> Motor3 already at position 12500");
+      return; // 重要：立即返回，下次循环处理STAGE2
+    }
+  }
+
+  else if (currentState == STATE_END_TOILET_STAGE2) {
+    if (!stateFlags.motor3_done) updateCurrentReading(3);
+
+    // 检查M3进度
+    if (!stateFlags.motor3_done) {
+      if (checkMotorReachedTarget(3, 12500, stateFlags.motor3_forward)) {
+        motorStop(3);
+        setPCA9685PWM(motors[3].pwmChannel, 0);
+        stateFlags.motor3_done = true;
+        Serial.println("=> Motor3 reached position 12500");
+      }
+    }
+
+    // M3完成后启动阶段3
+    if (stateFlags.motor3_done) {
+      // 启动阶段3: M4→8800
+      currentState = STATE_END_TOILET_STAGE3;
+      Serial.println("=> Stage 2 completed");
+      Serial.println("=> Stage 3: Moving Motor4 to position 8800...");
+      stateFlags.motor4_done = !startMotorToPosition(4, 8800, &stateFlags.motor4_forward);
+      if (stateFlags.motor4_done) Serial.println("=> Motor4 already at position 8800");
+      return; // 重要：立即返回，下次循环处理STAGE3
+    }
+  }
+
+  else if (currentState == STATE_END_TOILET_STAGE3) {
+    if (!stateFlags.motor4_done) updateCurrentReading(4);
+
+    // 检查M4进度
+    if (!stateFlags.motor4_done) {
+      if (checkMotorReachedTarget(4, 8800, stateFlags.motor4_forward)) {
+        motorStop(4);
+        setPCA9685PWM(motors[4].pwmChannel, 0);
+        stateFlags.motor4_done = true;
+        Serial.println("=> Motor4 reached position 8800");
+      }
+    }
+
+    // 检查是否全部完成
+    if (stateFlags.motor4_done) {
+      Serial.println("=> Stage 3 completed");
+      Serial.println("=> END TOILET sequence completed successfully");
+      currentState = STATE_IDLE;
+    }
+  }
 }
 
 // ================= 指令解析与执行 =================
@@ -1705,6 +1794,51 @@ void processCommand(byte cmd[8]) {
     }
 
     currentState = STATE_TOILET_STAGE1;
+    stateStartTime = millis();
+    return;
+  }
+
+  // 结束如厕（三阶段顺序执行：M5+M6→0, M3→12500, M4→8800）
+  else if (memcmp(cmd, cmdEndToilet, 8) == 0) {
+    if (currentState != STATE_IDLE) {
+      Serial.println("=> END TOILET: State machine busy, command ignored");
+      return;
+    }
+
+    Serial.println("=> END TOILET: Starting sequence...");
+
+    // 初始化所有阶段标志（防止上次残留）
+    stateFlags.motor3_done = false;
+    stateFlags.motor4_done = false;
+    stateFlags.motor5_done = false;
+    stateFlags.motor6_done = false;
+
+    // 启动阶段1: M5+M6→0（同步）
+    Serial.println("=> Stage 1: Moving Motor5 and Motor6 to position 0...");
+    stateFlags.motor5_done = !startMotorToPosition(5, 0, &stateFlags.motor5_forward);
+    stateFlags.motor6_done = !startMotorToPosition(6, 0, &stateFlags.motor6_forward);
+
+    if (stateFlags.motor5_done) {
+      Serial.println("=> Motor5 already at position 0");
+    } else {
+      if (stateFlags.motor5_forward) {
+        Serial.println("=> Motor5 moving forward to 0");
+      } else {
+        Serial.println("=> Motor5 moving reverse to 0");
+      }
+    }
+
+    if (stateFlags.motor6_done) {
+      Serial.println("=> Motor6 already at position 0");
+    } else {
+      if (stateFlags.motor6_forward) {
+        Serial.println("=> Motor6 moving forward to 0");
+      } else {
+        Serial.println("=> Motor6 moving reverse to 0");
+      }
+    }
+
+    currentState = STATE_END_TOILET_STAGE1;
     stateStartTime = millis();
     return;
   }
