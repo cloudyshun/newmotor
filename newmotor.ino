@@ -1196,12 +1196,26 @@ void processCommand(byte cmd[8]) {
     return;
   }
   else if (memcmp(cmd, cmdMotor0Forward, 8) == 0) {
+    int16_t pos1 = getMotorPosition(1);
+    if (pos1 < 6500 || pos1 > 6900) {
+      Serial.print("=> Motor0 FORWARD: Motor1 position out of range: ");
+      Serial.print(pos1);
+      Serial.println(" (required: 6500-6900), command ignored");
+      return;
+    }
     Serial.println("=> Motor0 FORWARD");
     motorForward(0);
     setPCA9685PWM(motors[0].pwmChannel, pctToDuty(SPEED_PERCENT));
     return;
   }
   else if (memcmp(cmd, cmdMotor0Reverse, 8) == 0) {
+    int16_t pos1 = getMotorPosition(1);
+    if (pos1 < 6500 || pos1 > 6900) {
+      Serial.print("=> Motor0 REVERSE: Motor1 position out of range: ");
+      Serial.print(pos1);
+      Serial.println(" (required: 6500-6900), command ignored");
+      return;
+    }
     Serial.println("=> Motor0 REVERSE");
     motorReverse(0);
     setPCA9685PWM(motors[0].pwmChannel, pctToDuty(SPEED_PERCENT));
@@ -1234,12 +1248,26 @@ void processCommand(byte cmd[8]) {
     return;
   }
   else if (memcmp(cmd, cmdMotor1Forward, 8) == 0) {
+    int16_t pos0 = getMotorPosition(0);
+    if (pos0 < 4200 || pos0 > 4800) {
+      Serial.print("=> Motor1 FORWARD: Motor0 position out of range: ");
+      Serial.print(pos0);
+      Serial.println(" (required: 4200-4800), command ignored");
+      return;
+    }
     Serial.println("=> Motor1 FORWARD");
     motorForward(1);
     setPCA9685PWM(motors[1].pwmChannel, pctToDuty(SPEED_PERCENT));
     return;
   }
   else if (memcmp(cmd, cmdMotor1Reverse, 8) == 0) {
+    int16_t pos0 = getMotorPosition(0);
+    if (pos0 < 4200 || pos0 > 4800) {
+      Serial.print("=> Motor1 REVERSE: Motor0 position out of range: ");
+      Serial.print(pos0);
+      Serial.println(" (required: 4200-4800), command ignored");
+      return;
+    }
     Serial.println("=> Motor1 REVERSE");
     motorReverse(1);
     setPCA9685PWM(motors[1].pwmChannel, pctToDuty(SPEED_PERCENT));
