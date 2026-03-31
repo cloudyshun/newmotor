@@ -1188,6 +1188,11 @@ void processCommand(byte cmd[8]) {
     Serial.println("=> Motor0 STOP");
     motorStop(0);
     setPCA9685PWM(motors[0].pwmChannel, 0);
+    if (currentState == STATE_LEFT_TURN_RUNNING ||
+        currentState == STATE_RIGHT_TURN_RUNNING) {
+      Serial.println("=> Turn state aborted by Motor0 STOP");
+      currentState = STATE_IDLE;
+    }
     return;
   }
   else if (memcmp(cmd, cmdMotor0Forward, 8) == 0) {
@@ -1222,6 +1227,10 @@ void processCommand(byte cmd[8]) {
     Serial.println("=> Motor1 STOP");
     motorStop(1);
     setPCA9685PWM(motors[1].pwmChannel, 0);
+    if (currentState == STATE_RAISE_BACK_RUNNING) {
+      Serial.println("=> Raise back state aborted by Motor1 STOP");
+      currentState = STATE_IDLE;
+    }
     return;
   }
   else if (memcmp(cmd, cmdMotor1Forward, 8) == 0) {
@@ -1256,6 +1265,10 @@ void processCommand(byte cmd[8]) {
     Serial.println("=> Motor2 STOP");
     motorStop(2);
     setPCA9685PWM(motors[2].pwmChannel, 0);
+    if (currentState == STATE_RAISE_LEG_RUNNING) {
+      Serial.println("=> Raise leg state aborted by Motor2 STOP");
+      currentState = STATE_IDLE;
+    }
     return;
   }
   else if (memcmp(cmd, cmdMotor2Forward, 8) == 0) {
