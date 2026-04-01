@@ -209,6 +209,7 @@ enum MotionState {
   // 抬腿状态
   STATE_RAISE_LEG_RUNNING,
   STATE_RAISE_LEG_RETURN_RUNNING,
+  STATE_RAISE_LEG_ZERO_RUNNING,
 
   // 坐立状态
   STATE_SIT_RUNNING,
@@ -314,6 +315,7 @@ const byte cmdToilet[8]     = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x16};
 const byte cmdEndToilet[8]  = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x17};
 const byte cmdRaiseBackReturn[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x23};
 const byte cmdRaiseLegReturn[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x24};
+const byte cmdRaiseLegZero[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x34};
 const byte cmdEmergencyStop[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0xFF, 0xFF};
 
 // ---- 串口中断接收缓冲区 ----
@@ -542,6 +544,16 @@ void emergencyStopAll() {
 
   // 重置状态机
   currentState = STATE_IDLE;
+
+  // 立即保存所有电机位置（防止断电丢失）
+  Serial.println("=> Saving all motor positions to EEPROM...");
+  for (int i = 0; i < 7; i++) {
+    if (motors[i].position != motors[i].lastSavedPosition) {
+      savePositionToEEPROM(i, motors[i].position);
+      motors[i].lastSavedPosition = motors[i].position;
+    }
+  }
+  Serial.println("=> All positions saved successfully");
 }
 
 // 读取电机位置（原子操作）
@@ -971,6 +983,20 @@ void updateStateMachine() {
     }
   }
 
+  // 抬腿归零状态机
+  else if (currentState == STATE_RAISE_LEG_ZERO_RUNNING) {
+    updateCurrentReading(2);
+
+    if (checkMotorReachedTarget(2, 0, stateFlags.motor2_forward)) {
+      motorStop(2);
+      setPCA9685PWM(motors[2].pwmChannel, 0);
+      Serial.print("=> Motor2 reached position: ");
+      Serial.println(getMotorPosition(2));
+      Serial.println("=> RAISE LEG ZERO completed");
+      currentState = STATE_IDLE;
+    }
+  }
+
   // 坐立状态机
   else if (currentState == STATE_SIT_RUNNING) {
     if (!stateFlags.motor1_done) {
@@ -1157,12 +1183,12 @@ void updateStateMachine() {
 
     // M5和M6都完成后启动阶段2
     if (stateFlags.motor5_done && stateFlags.motor6_done) {
-      // 启动阶段2: M3→12500
+      // 启动阶段2: M3→12900
       currentState = STATE_END_TOILET_STAGE2;
       Serial.println("=> Stage 1 completed");
-      Serial.println("=> Stage 2: Moving Motor3 to position 12500...");
-      stateFlags.motor3_done = !startMotorToPosition(3, 12500, &stateFlags.motor3_forward);
-      if (stateFlags.motor3_done) Serial.println("=> Motor3 already at position 12500");
+      Serial.println("=> Stage 2: Moving Motor3 to position 12900...");
+      stateFlags.motor3_done = !startMotorToPosition(3, 12900, &stateFlags.motor3_forward);
+      if (stateFlags.motor3_done) Serial.println("=> Motor3 already at position 12900");
       return; // 重要：立即返回，下次循环处理STAGE2
     }
   }
@@ -1172,11 +1198,11 @@ void updateStateMachine() {
 
     // 检查M3进度
     if (!stateFlags.motor3_done) {
-      if (checkMotorReachedTarget(3, 12500, stateFlags.motor3_forward)) {
+      if (checkMotorReachedTarget(3, 12900, stateFlags.motor3_forward)) {
         motorStop(3);
         setPCA9685PWM(motors[3].pwmChannel, 0);
         stateFlags.motor3_done = true;
-        Serial.println("=> Motor3 reached position 12500");
+        Serial.println("=> Motor3 reached position 12900");
       }
     }
 
@@ -1362,6 +1388,10 @@ void processCommand(byte cmd[8]) {
       Serial.println("=> Raise leg return state aborted by Motor2 STOP");
       currentState = STATE_IDLE;
     }
+    if (currentState == STATE_RAISE_LEG_ZERO_RUNNING) {
+      Serial.println("=> Raise leg zero state aborted by Motor2 STOP");
+      currentState = STATE_IDLE;
+    }
     return;
   }
   else if (memcmp(cmd, cmdMotor2Forward, 8) == 0) {
@@ -1372,6 +1402,10 @@ void processCommand(byte cmd[8]) {
     }
     if (currentState == STATE_RAISE_LEG_RETURN_RUNNING) {
       Serial.println("=> Raise leg return state aborted by Motor2 FORWARD");
+      currentState = STATE_IDLE;
+    }
+    if (currentState == STATE_RAISE_LEG_ZERO_RUNNING) {
+      Serial.println("=> Raise leg zero state aborted by Motor2 FORWARD");
       currentState = STATE_IDLE;
     }
     Serial.println("=> Motor2 FORWARD");
@@ -1387,6 +1421,10 @@ void processCommand(byte cmd[8]) {
     }
     if (currentState == STATE_RAISE_LEG_RETURN_RUNNING) {
       Serial.println("=> Raise leg return state aborted by Motor2 REVERSE");
+      currentState = STATE_IDLE;
+    }
+    if (currentState == STATE_RAISE_LEG_ZERO_RUNNING) {
+      Serial.println("=> Raise leg zero state aborted by Motor2 REVERSE");
       currentState = STATE_IDLE;
     }
     Serial.println("=> Motor2 REVERSE");
@@ -1875,6 +1913,45 @@ void processCommand(byte cmd[8]) {
     return;
   }
 
+  // 抬腿归零
+  else if (memcmp(cmd, cmdRaiseLegZero, 8) == 0) {
+    if (currentState != STATE_IDLE) {
+      Serial.println("=> RAISE LEG ZERO: State machine busy, command ignored");
+      return;
+    }
+
+    Serial.println("=> RAISE LEG ZERO: Moving Motor2 to position 0...");
+    int16_t pos2 = getMotorPosition(2);
+
+    // 检查是否已在目标范围内
+    if (pos2 >= -200 && pos2 <= 200) {
+      Serial.print("=> Motor2 already in target range: ");
+      Serial.println(pos2);
+      Serial.println("=> RAISE LEG ZERO completed");
+      return;
+    }
+
+    // 初始化标志（防止上次残留）
+    stateFlags.motor2_done = false;
+
+    stateFlags.motor2_done = !startMotorToPosition(2, 0, &stateFlags.motor2_forward);
+    if (stateFlags.motor2_done) {
+      Serial.println("=> Motor2 already at position 0");
+      Serial.println("=> RAISE LEG ZERO completed");
+      return;
+    }
+
+    if (stateFlags.motor2_forward) {
+      Serial.println("=> Motor2 moving forward to 0");
+    } else {
+      Serial.println("=> Motor2 moving reverse to 0");
+    }
+
+    currentState = STATE_RAISE_LEG_ZERO_RUNNING;
+    stateStartTime = millis();
+    return;
+  }
+
   // 坐立（起背+屈腿归零）
   else if (memcmp(cmd, cmdSit, 8) == 0) {
     if (currentState != STATE_IDLE) {
@@ -1995,7 +2072,7 @@ void processCommand(byte cmd[8]) {
     return;
   }
 
-  // 结束如厕（三阶段顺序执行：M5+M6→0, M3→12500, M4→7300）
+  // 结束如厕（三阶段顺序执行：M5+M6→0, M3→12900, M4→7300）
   else if (memcmp(cmd, cmdEndToilet, 8) == 0) {
     if (currentState != STATE_IDLE) {
       Serial.println("=> END TOILET: State machine busy, command ignored");
