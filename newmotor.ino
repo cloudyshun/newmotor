@@ -204,9 +204,11 @@ enum MotionState {
 
   // 起背状态
   STATE_RAISE_BACK_RUNNING,
+  STATE_RAISE_BACK_RETURN_RUNNING,
 
   // 抬腿状态
   STATE_RAISE_LEG_RUNNING,
+  STATE_RAISE_LEG_RETURN_RUNNING,
 
   // 坐立状态
   STATE_SIT_RUNNING,
@@ -310,6 +312,8 @@ const byte cmdRaiseLeg[8]   = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x14};
 const byte cmdSit[8]        = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x15};
 const byte cmdToilet[8]     = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x16};
 const byte cmdEndToilet[8]  = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x17};
+const byte cmdRaiseBackReturn[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x23};
+const byte cmdRaiseLegReturn[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0x08, 0x24};
 const byte cmdEmergencyStop[8] = {0xEE, 0x02, 0x11, 0x00, 0x11, 0x00, 0xFF, 0xFF};
 
 // ---- 串口中断接收缓冲区 ----
@@ -920,6 +924,25 @@ void updateStateMachine() {
     }
   }
 
+  // 起背回归状态机
+  else if (currentState == STATE_RAISE_BACK_RETURN_RUNNING) {
+    updateCurrentReading(1);
+
+    // 检查是否到达极限位置（0.5秒内位置不变）
+    int16_t currentPos = getMotorPosition(1);
+    if (currentPos != lastMonitoredPos) {
+      lastMonitoredPos = currentPos;
+      lastPosChangeTime = millis();
+    }
+
+    if (millis() - lastPosChangeTime >= 500) {  // 0.5秒
+      motorStop(1);
+      setPCA9685PWM(motors[1].pwmChannel, 0);
+      Serial.println("=> RAISE BACK RETURN completed, Motor1 reached limit position");
+      currentState = STATE_IDLE;
+    }
+  }
+
   // 抬腿状态机
   else if (currentState == STATE_RAISE_LEG_RUNNING) {
     updateCurrentReading(2);
@@ -930,6 +953,20 @@ void updateStateMachine() {
       Serial.print("=> Motor2 reached position: ");
       Serial.println(getMotorPosition(2));
       Serial.println("=> RAISE LEG completed");
+      currentState = STATE_IDLE;
+    }
+  }
+
+  // 抬腿回归状态机
+  else if (currentState == STATE_RAISE_LEG_RETURN_RUNNING) {
+    updateCurrentReading(2);
+
+    if (checkMotorReachedTarget(2, 5000, stateFlags.motor2_forward)) {
+      motorStop(2);
+      setPCA9685PWM(motors[2].pwmChannel, 0);
+      Serial.print("=> Motor2 reached position: ");
+      Serial.println(getMotorPosition(2));
+      Serial.println("=> RAISE LEG RETURN completed");
       currentState = STATE_IDLE;
     }
   }
@@ -1196,6 +1233,11 @@ void processCommand(byte cmd[8]) {
     return;
   }
   else if (memcmp(cmd, cmdMotor0Forward, 8) == 0) {
+    // 检查并中断相关状态机
+    if (currentState == STATE_LEFT_TURN_RUNNING || currentState == STATE_RIGHT_TURN_RUNNING) {
+      Serial.println("=> Turn state aborted by Motor0 FORWARD");
+      currentState = STATE_IDLE;
+    }
     int16_t pos1 = getMotorPosition(1);
     if (pos1 < 6500 || pos1 > 6900) {
       Serial.print("=> Motor0 FORWARD: Motor1 position out of range: ");
@@ -1209,6 +1251,11 @@ void processCommand(byte cmd[8]) {
     return;
   }
   else if (memcmp(cmd, cmdMotor0Reverse, 8) == 0) {
+    // 检查并中断相关状态机
+    if (currentState == STATE_LEFT_TURN_RUNNING || currentState == STATE_RIGHT_TURN_RUNNING) {
+      Serial.println("=> Turn state aborted by Motor0 REVERSE");
+      currentState = STATE_IDLE;
+    }
     int16_t pos1 = getMotorPosition(1);
     if (pos1 < 6500 || pos1 > 6900) {
       Serial.print("=> Motor0 REVERSE: Motor1 position out of range: ");
@@ -1245,9 +1292,18 @@ void processCommand(byte cmd[8]) {
       Serial.println("=> Raise back state aborted by Motor1 STOP");
       currentState = STATE_IDLE;
     }
+    if (currentState == STATE_RAISE_BACK_RETURN_RUNNING) {
+      Serial.println("=> Raise back return state aborted by Motor1 STOP");
+      currentState = STATE_IDLE;
+    }
     return;
   }
   else if (memcmp(cmd, cmdMotor1Forward, 8) == 0) {
+    // 检查并中断相关状态机
+    if (currentState == STATE_RAISE_BACK_RUNNING || currentState == STATE_RAISE_BACK_RETURN_RUNNING) {
+      Serial.println("=> Raise back state aborted by Motor1 FORWARD");
+      currentState = STATE_IDLE;
+    }
     int16_t pos0 = getMotorPosition(0);
     if (pos0 < 4200 || pos0 > 4800) {
       Serial.print("=> Motor1 FORWARD: Motor0 position out of range: ");
@@ -1261,6 +1317,11 @@ void processCommand(byte cmd[8]) {
     return;
   }
   else if (memcmp(cmd, cmdMotor1Reverse, 8) == 0) {
+    // 检查并中断相关状态机
+    if (currentState == STATE_RAISE_BACK_RUNNING || currentState == STATE_RAISE_BACK_RETURN_RUNNING) {
+      Serial.println("=> Raise back state aborted by Motor1 REVERSE");
+      currentState = STATE_IDLE;
+    }
     int16_t pos0 = getMotorPosition(0);
     if (pos0 < 4200 || pos0 > 4800) {
       Serial.print("=> Motor1 REVERSE: Motor0 position out of range: ");
@@ -1297,15 +1358,37 @@ void processCommand(byte cmd[8]) {
       Serial.println("=> Raise leg state aborted by Motor2 STOP");
       currentState = STATE_IDLE;
     }
+    if (currentState == STATE_RAISE_LEG_RETURN_RUNNING) {
+      Serial.println("=> Raise leg return state aborted by Motor2 STOP");
+      currentState = STATE_IDLE;
+    }
     return;
   }
   else if (memcmp(cmd, cmdMotor2Forward, 8) == 0) {
+    // 检查并中断相关状态机
+    if (currentState == STATE_RAISE_LEG_RUNNING) {
+      Serial.println("=> Raise leg state aborted by Motor2 FORWARD");
+      currentState = STATE_IDLE;
+    }
+    if (currentState == STATE_RAISE_LEG_RETURN_RUNNING) {
+      Serial.println("=> Raise leg return state aborted by Motor2 FORWARD");
+      currentState = STATE_IDLE;
+    }
     Serial.println("=> Motor2 FORWARD");
     motorForward(2);
     setPCA9685PWM(motors[2].pwmChannel, pctToDuty(SPEED_PERCENT));
     return;
   }
   else if (memcmp(cmd, cmdMotor2Reverse, 8) == 0) {
+    // 检查并中断相关状态机
+    if (currentState == STATE_RAISE_LEG_RUNNING) {
+      Serial.println("=> Raise leg state aborted by Motor2 REVERSE");
+      currentState = STATE_IDLE;
+    }
+    if (currentState == STATE_RAISE_LEG_RETURN_RUNNING) {
+      Serial.println("=> Raise leg return state aborted by Motor2 REVERSE");
+      currentState = STATE_IDLE;
+    }
     Serial.println("=> Motor2 REVERSE");
     motorReverse(2);
     setPCA9685PWM(motors[2].pwmChannel, pctToDuty(SPEED_PERCENT));
@@ -1680,6 +1763,40 @@ void processCommand(byte cmd[8]) {
     return;
   }
 
+  // 起背回归
+  else if (memcmp(cmd, cmdRaiseBackReturn, 8) == 0) {
+    if (currentState != STATE_IDLE) {
+      Serial.println("=> RAISE BACK RETURN: State machine busy, command ignored");
+      return;
+    }
+
+    Serial.println("=> RAISE BACK RETURN: Checking Motor0 position...");
+    int16_t pos0 = getMotorPosition(0);
+
+    // 检查电机0位置是否在4200-4800范围内
+    if (pos0 >= 4200 && pos0 <= 4800) {
+      Serial.print("=> Motor0 position OK (");
+      Serial.print(pos0);
+      Serial.println("), Motor1 forwarding...");
+
+      motorForward(1);
+      setPCA9685PWM(motors[1].pwmChannel, pctToDuty(SPEED_PERCENT));
+
+      // 初始化极限位置检测
+      currentState = STATE_RAISE_BACK_RETURN_RUNNING;
+      stateStartTime = millis();
+      lastPosChangeTime = millis();
+      lastMonitoredPos = getMotorPosition(1);
+      Serial.println("=> RAISE BACK RETURN: Motor1 forwarding (will stop at limit)");
+    } else {
+      Serial.print("=> Motor0 position out of range: ");
+      Serial.print(pos0);
+      Serial.println(" (required: 4200-4800)");
+      Serial.println("=> RAISE BACK RETURN: Command ignored");
+    }
+    return;
+  }
+
   // 抬腿
   else if (memcmp(cmd, cmdRaiseLeg, 8) == 0) {
     if (currentState != STATE_IDLE) {
@@ -1715,6 +1832,45 @@ void processCommand(byte cmd[8]) {
     }
 
     currentState = STATE_RAISE_LEG_RUNNING;
+    stateStartTime = millis();
+    return;
+  }
+
+  // 抬腿回归
+  else if (memcmp(cmd, cmdRaiseLegReturn, 8) == 0) {
+    if (currentState != STATE_IDLE) {
+      Serial.println("=> RAISE LEG RETURN: State machine busy, command ignored");
+      return;
+    }
+
+    Serial.println("=> RAISE LEG RETURN: Moving Motor2 to position 5000...");
+    int16_t pos2 = getMotorPosition(2);
+
+    // 检查是否已在目标范围内
+    if (pos2 >= 4800 && pos2 <= 5200) {
+      Serial.print("=> Motor2 already in target range: ");
+      Serial.println(pos2);
+      Serial.println("=> RAISE LEG RETURN completed");
+      return;
+    }
+
+    // 初始化标志（防止上次残留）
+    stateFlags.motor2_done = false;
+
+    stateFlags.motor2_done = !startMotorToPosition(2, 5000, &stateFlags.motor2_forward);
+    if (stateFlags.motor2_done) {
+      Serial.println("=> Motor2 already at position 5000");
+      Serial.println("=> RAISE LEG RETURN completed");
+      return;
+    }
+
+    if (stateFlags.motor2_forward) {
+      Serial.println("=> Motor2 moving forward to 5000");
+    } else {
+      Serial.println("=> Motor2 moving reverse to 5000");
+    }
+
+    currentState = STATE_RAISE_LEG_RETURN_RUNNING;
     stateStartTime = millis();
     return;
   }
