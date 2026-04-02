@@ -1166,9 +1166,9 @@ void updateStateMachine() {
       Serial.println("=> Motor2 reached position 0 (SIT)");
     }
 
-    // 检查是否全部完成
-    if (stateFlags.motor5_done && stateFlags.motor6_done && stateFlags.motor1_done && stateFlags.motor2_done) {
-      Serial.println("=> TOILET sequence completed successfully (all actions finished)");
+    // 检查如厕主流程是否完成（只检查M5和M6）
+    if (stateFlags.motor5_done && stateFlags.motor6_done) {
+      Serial.println("=> TOILET sequence completed successfully");
       currentState = STATE_IDLE;
     }
   }
