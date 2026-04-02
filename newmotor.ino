@@ -252,6 +252,12 @@ struct StateFlags {
   unsigned long motor1_lastPosChange;
   int16_t motor3_lastPos;
   unsigned long motor3_lastPosChange;
+  int16_t motor4_lastPos;
+  unsigned long motor4_lastPosChange;
+  int16_t motor5_lastPos;
+  unsigned long motor5_lastPosChange;
+  int16_t motor6_lastPos;
+  unsigned long motor6_lastPosChange;
 };
 
 StateFlags stateFlags;
@@ -565,6 +571,12 @@ void emergencyStopAll() {
   stateFlags.motor1_lastPosChange = 0;
   stateFlags.motor3_lastPos = 0;
   stateFlags.motor3_lastPosChange = 0;
+  stateFlags.motor4_lastPos = 0;
+  stateFlags.motor4_lastPosChange = 0;
+  stateFlags.motor5_lastPos = 0;
+  stateFlags.motor5_lastPosChange = 0;
+  stateFlags.motor6_lastPos = 0;
+  stateFlags.motor6_lastPosChange = 0;
 
   // 立即保存所有电机位置（防止断电丢失）
   Serial.println("=> Saving all motor positions to EEPROM...");
@@ -1053,9 +1065,18 @@ void updateStateMachine() {
     if (stateFlags.motor1_done == false) updateCurrentReading(1);  // 坐起：M1
     if (stateFlags.motor2_done == false) updateCurrentReading(2);  // 坐起：M2
 
-    // 检查M4进度
+    // 检查M4进度（两个条件：位置不变 + 位置在范围内）
     if (!stateFlags.motor4_done) {
-      if (checkMotorReachedTarget(4, 0, stateFlags.motor4_forward)) {
+      int16_t pos4 = getMotorPosition(4);
+      
+      // 条件1：检查位置是否变化
+      if (pos4 != stateFlags.motor4_lastPos) {
+        stateFlags.motor4_lastPos = pos4;
+        stateFlags.motor4_lastPosChange = millis();
+      }
+      
+      // 条件2：位置0.5秒内不变 且 在[-200, 200]范围内
+      if ((millis() - stateFlags.motor4_lastPosChange >= 500) && (abs(pos4) <= 200)) {
         motorStop(4);
         setPCA9685PWM(motors[4].pwmChannel, 0);
         stateFlags.motor4_done = true;
@@ -1191,9 +1212,18 @@ void updateStateMachine() {
     if (!stateFlags.motor5_done) updateCurrentReading(5);
     if (!stateFlags.motor6_done) updateCurrentReading(6);
 
-    // 检查M5进度
+    // 检查M5进度（两个条件：位置不变 + 位置在范围内）
     if (!stateFlags.motor5_done) {
-      if (checkMotorReachedTarget(5, 0, stateFlags.motor5_forward)) {
+      int16_t pos5 = getMotorPosition(5);
+      
+      // 条件1：检查位置是否变化
+      if (pos5 != stateFlags.motor5_lastPos) {
+        stateFlags.motor5_lastPos = pos5;
+        stateFlags.motor5_lastPosChange = millis();
+      }
+      
+      // 条件2：位置0.5秒内不变 且 在[-200, 200]范围内
+      if ((millis() - stateFlags.motor5_lastPosChange >= 500) && (abs(pos5) <= 200)) {
         motorStop(5);
         setPCA9685PWM(motors[5].pwmChannel, 0);
         stateFlags.motor5_done = true;
@@ -1201,9 +1231,18 @@ void updateStateMachine() {
       }
     }
 
-    // 检查M6进度
+    // 检查M6进度（两个条件：位置不变 + 位置在范围内）
     if (!stateFlags.motor6_done) {
-      if (checkMotorReachedTarget(6, 0, stateFlags.motor6_forward)) {
+      int16_t pos6 = getMotorPosition(6);
+      
+      // 条件1：检查位置是否变化
+      if (pos6 != stateFlags.motor6_lastPos) {
+        stateFlags.motor6_lastPos = pos6;
+        stateFlags.motor6_lastPosChange = millis();
+      }
+      
+      // 条件2：位置0.5秒内不变 且 在[-200, 200]范围内
+      if ((millis() - stateFlags.motor6_lastPosChange >= 500) && (abs(pos6) <= 200)) {
         motorStop(6);
         setPCA9685PWM(motors[6].pwmChannel, 0);
         stateFlags.motor6_done = true;
@@ -2171,6 +2210,12 @@ void processCommand(byte cmd[8]) {
     stateFlags.motor1_lastPosChange = millis();
     stateFlags.motor3_lastPos = getMotorPosition(3);
     stateFlags.motor3_lastPosChange = millis();
+    stateFlags.motor4_lastPos = getMotorPosition(4);
+    stateFlags.motor4_lastPosChange = millis();
+    stateFlags.motor5_lastPos = getMotorPosition(5);
+    stateFlags.motor5_lastPosChange = millis();
+    stateFlags.motor6_lastPos = getMotorPosition(6);
+    stateFlags.motor6_lastPosChange = millis();
 
     // 检查并启动坐起动作
     if (pos0 >= 4200 && pos0 <= 4800) {
@@ -2226,11 +2271,30 @@ void processCommand(byte cmd[8]) {
 
     Serial.println("=> END TOILET: Starting sequence...");
 
-    // 初始化所有阶段标志（防止上次残留）
+    // 初始化所有标志（必须在最前面，防止上次残留）
+    stateFlags.motor0_done = false;
+    stateFlags.motor1_done = false;
+    stateFlags.motor2_done = false;
     stateFlags.motor3_done = false;
     stateFlags.motor4_done = false;
     stateFlags.motor5_done = false;
     stateFlags.motor6_done = false;
+    stateFlags.motor0_forward = false;
+    stateFlags.motor2_forward = false;
+    stateFlags.motor3_forward = false;
+    stateFlags.motor4_forward = false;
+    stateFlags.motor5_forward = false;
+    stateFlags.motor6_forward = false;
+    stateFlags.motor1_lastPos = 0;
+    stateFlags.motor1_lastPosChange = 0;
+    stateFlags.motor3_lastPos = 0;
+    stateFlags.motor3_lastPosChange = 0;
+    stateFlags.motor4_lastPos = 0;
+    stateFlags.motor4_lastPosChange = 0;
+    stateFlags.motor5_lastPos = getMotorPosition(5);
+    stateFlags.motor5_lastPosChange = millis();
+    stateFlags.motor6_lastPos = getMotorPosition(6);
+    stateFlags.motor6_lastPosChange = millis();
 
     // 启动阶段1: M5+M6→0（同步）
     Serial.println("=> Stage 1: Moving Motor5 and Motor6 to position 0...");
