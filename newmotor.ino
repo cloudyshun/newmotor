@@ -185,6 +185,9 @@ Motor motors[7] = {
 // 74HC595 全局状态变量
 uint16_t hc595_state = 0x0000;
 
+// 电机2方向标志（由motorForward/motorReverse设置，ISR读取）
+volatile int8_t motor2_dir = 0;  // 1=前进, -1=后退, 0=停止
+
 // ---- 状态机定义 ----
 enum MotionState {
   STATE_IDLE = 0,
@@ -452,6 +455,8 @@ void motorForward(uint8_t motorIndex) {
   hc595_state &= ~reverseMask;  // 清除后退位
   hc595_state |= forwardMask;   // 设置前进位
 
+  if (motorIndex == 2) motor2_dir = 1;  // 设置电机2方向标志
+
   shiftOut16((hc595_state >> 8) & 0xFF, hc595_state & 0xFF);
 }
 
@@ -465,6 +470,8 @@ void motorReverse(uint8_t motorIndex) {
   hc595_state &= ~forwardMask;  // 清除前进位
   hc595_state |= reverseMask;   // 设置后退位
 
+  if (motorIndex == 2) motor2_dir = -1;  // 设置电机2方向标志
+
   shiftOut16((hc595_state >> 8) & 0xFF, hc595_state & 0xFF);
 }
 
@@ -477,6 +484,8 @@ void motorStop(uint8_t motorIndex) {
 
   hc595_state &= ~forwardMask;  // 清除前进位
   hc595_state &= ~reverseMask;  // 清除后退位
+
+  if (motorIndex == 2) motor2_dir = 0;  // 清除电机2方向标志
 
   shiftOut16((hc595_state >> 8) & 0xFF, hc595_state & 0xFF);
 }
@@ -711,29 +720,14 @@ void ISR_motor1_AB() {
   if (B != (lastState & 0x01)) motors[1].hallB_count++;
 }
 
-// Motor2 (PA4, PA5)
+// Motor2 (PA4, PA5) - 用驱动方向标志计数，A相RISING触发
 void ISR_motor2_AB() {
-  uint8_t A = digitalRead(motors[2].hallPinA);
-  uint8_t B = digitalRead(motors[2].hallPinB);
-  uint8_t currentState = (A << 1) | B;
-  uint8_t lastState = motors[2].lastState;
-
-  if ((lastState == 0b00 && currentState == 0b01) ||
-      (lastState == 0b01 && currentState == 0b11) ||
-      (lastState == 0b11 && currentState == 0b10) ||
-      (lastState == 0b10 && currentState == 0b00)) {
+  if (motor2_dir == 1) {
+    motors[2].position++;
+  } else if (motor2_dir == -1) {
     motors[2].position--;
   }
-  else if ((lastState == 0b00 && currentState == 0b10) ||
-           (lastState == 0b10 && currentState == 0b11) ||
-           (lastState == 0b11 && currentState == 0b01) ||
-           (lastState == 0b01 && currentState == 0b00)) {
-    motors[2].position++;
-  }
-
-  motors[2].lastState = currentState;
-  if (A != (lastState >> 1)) motors[2].hallA_count++;
-  if (B != (lastState & 0x01)) motors[2].hallB_count++;
+  motors[2].hallA_count++;
 }
 
 // Motor3 (PA6, PA7)
@@ -2521,9 +2515,8 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(motors[1].hallPinA), ISR_motor1_AB, CHANGE);
   attachInterrupt(digitalPinToInterrupt(motors[1].hallPinB), ISR_motor1_AB, CHANGE);
 
-  // Motor2 (PA4, PA5)
-  attachInterrupt(digitalPinToInterrupt(motors[2].hallPinA), ISR_motor2_AB, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(motors[2].hallPinB), ISR_motor2_AB, CHANGE);
+  // Motor2 (PA4, PA5) - 单倍频RISING，方向由motor2_dir标志决定
+  attachInterrupt(digitalPinToInterrupt(motors[2].hallPinA), ISR_motor2_AB, RISING);
 
   // Motor3 (PA6, PA7)
   attachInterrupt(digitalPinToInterrupt(motors[3].hallPinA), ISR_motor3_AB, CHANGE);
