@@ -720,14 +720,23 @@ void ISR_motor1_AB() {
   if (B != (lastState & 0x01)) motors[1].hallB_count++;
 }
 
-// Motor2 (PA4, PA5) - 用驱动方向标志计数，A相RISING触发
-void ISR_motor2_AB() {
+// Motor2 (PA4, PA5) - 用驱动方向标志计数，A相和B相CHANGE触发（4倍频）
+void ISR_motor2_A() {
   if (motor2_dir == 1) {
     motors[2].position++;
   } else if (motor2_dir == -1) {
     motors[2].position--;
   }
   motors[2].hallA_count++;
+}
+
+void ISR_motor2_B() {
+  if (motor2_dir == 1) {
+    motors[2].position++;
+  } else if (motor2_dir == -1) {
+    motors[2].position--;
+  }
+  motors[2].hallB_count++;
 }
 
 // Motor3 (PA6, PA7)
@@ -2515,8 +2524,9 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(motors[1].hallPinA), ISR_motor1_AB, CHANGE);
   attachInterrupt(digitalPinToInterrupt(motors[1].hallPinB), ISR_motor1_AB, CHANGE);
 
-  // Motor2 (PA4, PA5) - 单倍频RISING，方向由motor2_dir标志决定
-  attachInterrupt(digitalPinToInterrupt(motors[2].hallPinA), ISR_motor2_AB, RISING);
+  // Motor2 (PA4, PA5) - A相和B相都监听CHANGE（4倍频），方向由motor2_dir标志决定
+  attachInterrupt(digitalPinToInterrupt(motors[2].hallPinA), ISR_motor2_A, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(motors[2].hallPinB), ISR_motor2_B, CHANGE);
 
   // Motor3 (PA6, PA7)
   attachInterrupt(digitalPinToInterrupt(motors[3].hallPinA), ISR_motor3_AB, CHANGE);
